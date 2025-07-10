@@ -16,7 +16,7 @@ app.get('/solana-analysis', async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: 'You are a crypto technical analyst. Return the entire section in HTML format exactly matching Jars\' website design. The section must contain: 1) a table with long and short trading setups for Solana including entry, trigger, stop, target, and suggested leverage (between 10x–75x); 2) a detailed written market breakdown; 3) a short list of near-term and medium-term timing and outlook. Do not mention GPT or OpenAI.',
+          content: 'You are a crypto technical analyst. Return the entire section in HTML format exactly matching Jars\' website design. The section must contain: 1) a table with long and short trading setups for Solana including entry, trigger, stop, target, and suggested leverage (between 10x–75x); 2) a detailed written market breakdown; 3) a short list of near-term and medium-term timing and outlook. Do not mention GPT or OpenAI. Recommend long or short clearly, but also explain what to look for if the opposite move happens.',
         },
         {
           role: 'user',
@@ -28,7 +28,6 @@ app.get('/solana-analysis', async (req, res) => {
     const easternTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
     let content = response.choices?.[0]?.message?.content || '';
 
-    // Try inserting the timestamp only if <p> pattern exists
     if (/<p style=".*?">.*?<\/p>/.test(content)) {
       content = content.replace(
         /<p style=".*?">.*?<\/p>/,
@@ -38,7 +37,6 @@ app.get('/solana-analysis', async (req, res) => {
         </p>`
       );
     } else {
-      // If pattern is missing, add timestamp manually after <h2>
       content = content.replace(
         /(<h2[^>]*>Solana Perpetual Analysis<\/h2>)/,
         `$1\n<p style="font-size:13px;color:#999;margin-top:-10px;">
@@ -47,6 +45,15 @@ app.get('/solana-analysis', async (req, res) => {
         </p>`
       );
     }
+
+    // Add iframe height messaging script
+    content += `
+    <script>
+      window.parent.postMessage(
+        { height: document.body.scrollHeight },
+        "https://tradewithjars.net"
+      );
+    </script>`;
 
     if (!content || content.trim() === '') {
       content = `<div class="section"><h2 style="color:red;">ERROR</h2><p>Failed to generate analysis from GPT.</p></div>`;
