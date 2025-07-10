@@ -11,6 +11,21 @@ const openai = new OpenAI({
 
 app.get('/solana-analysis', async (req, res) => {
   try {
+    const prompt = `
+Provide a clear technical analysis of Solana (SOL/USDT). Recommend either a LONG or SHORT position based on the current trend and support/resistance levels, and explain why it is preferred. 
+Then, provide a secondary alternative setup for the opposite direction in case the preferred setup fails. Include a table with:
+- Bias (Preferred/Backup)
+- Setup
+- Entry
+- Trigger
+- Stop
+- Target
+- Leverage
+
+End with a Market Breakdown and Timing & Outlook.
+Format in simple HTML.
+`;
+
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
@@ -20,7 +35,7 @@ app.get('/solana-analysis', async (req, res) => {
         },
         {
           role: 'user',
-          content: 'Generate a fresh Solana Perpetual Analysis section with Eastern Time timestamp. Only the heading "Solana Perpetual Analysis" and the TECHNICAL ANALYSIS BY JARS line stay unchanged. Everything else must be new and updated each time.'
+          content: prompt
         }
       ]
     });
@@ -28,19 +43,34 @@ app.get('/solana-analysis', async (req, res) => {
     const easternTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
     let content = response.choices?.[0]?.message?.content || '';
 
-    // Remove accidental markdown wrapping like ```html and ```
+    // Remove ```html or ``` wrapping
     content = content.replace(/^```html\s*/i, '').replace(/```$/, '').trim();
 
-    // Fix black font (turn to white), but don’t touch anything else
+    // Replace black font with white for readability on dark background
     content = content.replace(/color:\s*#000000/gi, 'color: #ffffff');
 
-    // Inject update timestamp at bottom (not wrapped in extra styling)
-    content += `
-      <p style="font-size:13px;color:#999;margin-top:-10px;">
-        Last updated: ${easternTime}<br>
-        <em>TECHNICAL ANALYSIS BY JARS</em>
-      </p>
-    `;
+    // Insert timestamp properly
+    if (/<p style=".*?">.*?<\/p>/.test(content)) {
+      content = content.replace(
+        /<p style=".*?">.*?<\/p>/,
+        `<p style="font-size:13px;color:#999;margin-top:-10px;">
+          Last updated: ${easternTime}<br>
+          <em>TECHNICAL ANALYSIS BY JARS</em>
+        </p>`
+      );
+    } else {
+      content = content.replace(
+        /(<h2[^>]*>Solana Perpetual Analysis<\/h2>)/,
+        `$1\n<p style="font-size:13px;color:#999;margin-top:-10px;">
+          Last updated: ${easternTime}<br>
+          <em>TECHNICAL ANALYSIS BY JARS</em>
+        </p>`
+      );
+    }
+
+    if (!content || content.trim() === '') {
+      content = `<div class="section"><h2 style="color:red;">ERROR</h2><p>Failed to generate analysis from GPT.</p></div>`;
+    }
 
     fs.writeFileSync('./public/solana-analysis.html', content, 'utf8');
     res.send('✅ Analysis updated');
