@@ -43,13 +43,19 @@ Format in simple HTML.
     const easternTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
     let content = response.choices?.[0]?.message?.content || '';
 
-    // Remove ```html or ``` wrapping
+    // Remove markdown-style code block
     content = content.replace(/^```html\s*/i, '').replace(/```$/, '').trim();
 
-    // Replace black font with white for readability on dark background
-    content = content.replace(/color:\s*#000000/gi, 'color: #ffffff');
+    // Wrap entire content in black background and apply readable font colors
+    content = `
+<div style="background-color:#000000; color:#ffffff; padding:20px;">
+${content}
+</div>
+`.replace(/color:\s*#000000/gi, 'color: #ffffff') // override any black text
+ .replace(/color:\s*red/gi, 'color: #e02c2c')      // ensure red matches site
+ .replace(/color:\s*green/gi, 'color: #017a36');   // ensure green matches site
 
-    // Insert timestamp properly
+    // Insert timestamp below heading
     if (/<p style=".*?">.*?<\/p>/.test(content)) {
       content = content.replace(
         /<p style=".*?">.*?<\/p>/,
@@ -68,15 +74,16 @@ Format in simple HTML.
       );
     }
 
+    // Final safety check
     if (!content || content.trim() === '') {
-      content = `<div class="section"><h2 style="color:red;">ERROR</h2><p>Failed to generate analysis from GPT.</p></div>`;
+      content = `<div class="section"><h2 style="color:#e02c2c;">ERROR</h2><p>Failed to generate analysis from GPT.</p></div>`;
     }
 
     fs.writeFileSync('./public/solana-analysis.html', content, 'utf8');
     res.send('✅ Analysis updated');
   } catch (err) {
     console.error('❌ GPT Generation Failed:', err);
-    fs.writeFileSync('./public/solana-analysis.html', '<div class="section"><h2 style="color:red;">ERROR</h2><p>Failed to generate analysis.</p></div>', 'utf8');
+    fs.writeFileSync('./public/solana-analysis.html', '<div class="section"><h2 style="color:#e02c2c;">ERROR</h2><p>Failed to generate analysis.</p></div>', 'utf8');
     res.status(500).send('❌ Failed to generate analysis');
   }
 });
