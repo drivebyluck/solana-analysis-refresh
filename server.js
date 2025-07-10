@@ -17,26 +17,8 @@ const api = new ChatGPTAPI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-async function fetchMarketData() {
-  try {
-    // If CoinGlass is removed, you can skip this and just return an object
-    return {
-      success: true,
-      data: {
-        message: "Liquidation chart data removed as requested."
-      }
-    };
-  } catch (error) {
-    console.error("❌ CoinGlass API Error:", error.response?.data || error.message || error);
-    return { success: false };
-  }
-}
-
 async function generateAnalysis() {
   try {
-    const marketData = await fetchMarketData();
-
-    // Prepare the prompt
     const prompt = `
 Use the current Solana market conditions to fill out this chart and provide a daily technical analysis.
 
@@ -122,13 +104,13 @@ Use this format:
   }
 }
 
-// Refresh every 4 times daily
+// Refresh 4x daily at midnight, 8:30am, 12pm, 5:30pm EST
 cron.schedule('0 0,8,12,17 * * *', () => {
   console.log("⏰ Generating scheduled analysis");
   generateAnalysis();
 });
 
-// Initial run
+// Initial generation
 generateAnalysis();
 
 app.listen(PORT, () => {
