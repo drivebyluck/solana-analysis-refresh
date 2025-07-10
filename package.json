@@ -1,22 +1,18 @@
 {
   "name": "solana-analysis-refresh",
   "version": "1.0.0",
-  "description": "Solana analysis section with real market data and styled HTML output",
+  "description": "Solana Perpetual Technical Analysis",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "axios": "^1.6.8",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "node-cron": "^3.0.3",
-    "openai": "^4.26.0"
+    "chatgpt": "^5.3.2",
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3"
   },
   "engines": {
     "node": ">=18"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  }
 }
