@@ -27,8 +27,11 @@ app.get('/solana-analysis', async (req, res) => {
 
     const easternTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
     let content = response.choices?.[0]?.message?.content || '';
-    content = `<div style="background:#111827;padding:20px;color:#f3f4f6;border-radius:10px;">${content}</div>`;
 
+    // Remove ```html and ``` if present
+    content = content.replace(/```html\s*|```/g, '');
+
+    // Insert timestamp under heading or as needed
     if (/<p style=".*?">.*?<\/p>/.test(content)) {
       content = content.replace(
         /<p style=".*?">.*?<\/p>/,
@@ -47,18 +50,41 @@ app.get('/solana-analysis', async (req, res) => {
       );
     }
 
-    // Add iframe height messaging script
-    content += `
+    // Wrap content in styled container matching your site theme
+    content = `
+    <div style="background:#0d0d0d;color:#ffffff;font-family:'Trebuchet MS',sans-serif;padding:20px;text-align:center;">
+      <style>
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 20px;
+        }
+        th, td {
+          padding: 12px;
+          border: 1px solid #444;
+        }
+        th {
+          background-color: #222;
+          color: #e02c2c;
+        }
+        tr:nth-child(even) {
+          background-color: #111;
+        }
+        h2 {
+          color: #017a36;
+        }
+        p, td {
+          color: #ffffff;
+        }
+      </style>
+      ${content}
+    </div>
     <script>
       window.parent.postMessage(
         { height: document.body.scrollHeight },
         "https://tradewithjars.net"
       );
     </script>`;
-
-    if (!content || content.trim() === '') {
-      content = `<div class="section"><h2 style="color:red;">ERROR</h2><p>Failed to generate analysis from GPT.</p></div>`;
-    }
 
     fs.writeFileSync('./public/solana-analysis.html', content, 'utf8');
     res.send('✅ Analysis updated');
