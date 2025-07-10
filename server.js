@@ -11,9 +11,31 @@ const openai = new OpenAI({
 
 app.get('/solana-analysis', async (req, res) => {
   try {
+    const coinglassData = await fetch('https://open-api.coinglass.com/public/v4/open_interest/coin/detail?symbol=SOL', {
+      headers: {
+        'coinglassSecret': process.env.COINGLASS_API_KEY
+      }
+    }).then(r => r.json());
+
+    const oi = coinglassData?.data?.openInterest || 'N/A';
+    const volume = coinglassData?.data?.volume || 'N/A';
+    const longRate = coinglassData?.data?.longRate || 'N/A';
+    const shortRate = coinglassData?.data?.shortRate || 'N/A';
+
+    const marketDataString = `
+Open Interest: ${oi}
+Volume: ${volume}
+Long/Short Ratio: ${longRate}/${shortRate}
+    `;
+
     const prompt = `
-Provide a clear technical analysis of Solana (SOL/USDT). Recommend either a LONG or SHORT position based on the current trend and support/resistance levels, and explain why it is preferred. 
-Then, provide a secondary alternative setup for the opposite direction in case the preferred setup fails. Include a table with:
+Using all of the following data, provide a real-time technical analysis for Solana (SOL/USDT). Incorporate price action, support/resistance, MACD, RSI, order blocks, liquidation zones, and trend behavior. Assume current Solana price is $157. Use the following data:
+${marketDataString}
+
+Recommend a LONG or SHORT based on the data and explain why it's more likely.
+Also provide a backup plan for the opposite scenario.
+
+Then include a table with:
 - Bias (Preferred/Backup)
 - Setup
 - Entry
@@ -23,15 +45,16 @@ Then, provide a secondary alternative setup for the opposite direction in case t
 - Leverage
 
 End with a Market Breakdown and Timing & Outlook.
-Format in simple HTML using <h2>, <p>, and <table> without inline styles.
-`;
+Format in clean HTML that fits into a black background with only white (#ffffff), green (#017a36), or red (#e02c2c) fonts.
+Always follow the same layout, use tight spacing, and no extra margin or padding at the bottom.
+    `;
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
         {
           role: 'system',
-          content: 'You are a crypto technical analyst. Return the entire section in HTML format. Do NOT use any inline styles. Do NOT use colors or CSS. Only return clean HTML using <h2>, <p>, <table>. Avoid repeated headings. Do not mention GPT or OpenAI.',
+          content: 'You are a crypto technical analyst. Return the entire section in HTML format exactly matching Jars\' website design. The section must contain: 1) a table with long and short trading setups for Solana including entry, trigger, stop, target, and suggested leverage (between 10x–75x); 2) a detailed written market breakdown; 3) a short list of near-term and medium-term timing and outlook. Do not mention GPT or OpenAI.'
         },
         {
           role: 'user',
@@ -41,34 +64,45 @@ Format in simple HTML using <h2>, <p>, and <table> without inline styles.
     });
 
     const easternTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-    let rawContent = response.choices?.[0]?.message?.content || '';
+    let content = response.choices?.[0]?.message?.content || '';
 
-    // Strip any ``` wrappers
-    rawContent = rawContent.replace(/^```html\s*/i, '').replace(/```$/, '').trim();
+    // Remove accidental code fences
+    content = content.replace(/^```html\s*/i, '').replace(/```$/, '').trim();
 
-    // Build the final full HTML content with locked styles
-    const wrappedContent = `
-<div class="analysis-wrapper">
-  <style>
-    body { margin: 0; padding: 0; background: black; color: white; font-family: 'Trebuchet MS', sans-serif; }
-    .analysis-wrapper { background: black; padding: 20px; color: white; }
-    h2 { color: #017a36; margin-bottom: 10px; }
-    p { font-size: 16px; line-height: 1.6; color: white; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th { background: #111; color: #e02c2c; padding: 10px; border: 1px solid #444; }
-    td { background: #000; color: white; padding: 10px; border: 1px solid #444; }
-    em { color: #999; }
-  </style>
-  <h2>Solana Perpetual Analysis</h2>
-  <p style="font-size:13px;color:#999;margin-top:-10px;">
-    Last updated: ${easternTime}<br>
-    <em>TECHNICAL ANALYSIS BY JARS</em>
-  </p>
-  ${rawContent}
-</div>
-    `;
+    // Apply styling
+    content = content
+      .replace(/color:\s*#000000/gi, 'color: #ffffff')
+      .replace(/color:\s*black/gi, 'color: #ffffff')
+      .replace(/background-color:\s*[^;"]+/gi, 'background-color: #000000');
 
-    fs.writeFileSync('./public/solana-analysis.html', wrappedContent, 'utf8');
+    // Inject forced background and font colors to enforce consistency
+    content = `<div style="background-color:#000000; color:#ffffff; padding:10px; font-family:sans-serif;">
+${content}
+</div>`;
+
+    // Timestamp
+    if (/<p style=".*?">.*?<\/p>/.test(content)) {
+      content = content.replace(
+        /<p style=".*?">.*?<\/p>/,
+        `<p style="font-size:13px;color:#999;margin-top:-10px;">
+          Last updated: ${easternTime}<br>
+          <em>TECHNICAL ANALYSIS BY JARS</em>
+        </p>`
+      );
+    } else {
+      content = content.replace(
+        /(<h2[^>]*>Solana Perpetual Analysis<\/h2>)/,
+        `$1\n<p style="font-size:13px;color:#999;margin-top:-10px;">
+          Last updated: ${easternTime}<br>
+          <em>TECHNICAL ANALYSIS BY JARS</em>
+        </p>`
+      );
+    }
+
+    // Trim bottom whitespace
+    content = content.replace(/\s+<\/div>$/, '</div>');
+
+    fs.writeFileSync('./public/solana-analysis.html', content, 'utf8');
     res.send('✅ Analysis updated');
   } catch (err) {
     console.error('❌ GPT Generation Failed:', err);
