@@ -16,7 +16,7 @@ app.get('/solana-analysis', async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: 'You are a crypto technical analyst. Return the entire section in HTML format exactly matching Jars\' website design. The section must contain: 1) a table with long and short trading setups for Solana including entry, trigger, stop, target, and suggested leverage (between 10x–75x); 2) a detailed written market breakdown; 3) a short list of near-term and medium-term timing and outlook. Do not mention GPT or OpenAI. Recommend long or short clearly, but also explain what to look for if the opposite move happens.',
+          content: 'You are a crypto technical analyst. Return the entire section in HTML format exactly matching Jars\' website design. The section must contain: 1) a table with long and short trading setups for Solana including entry, trigger, stop, target, and suggested leverage (between 10x–75x); 2) a detailed written market breakdown; 3) a short list of near-term and medium-term timing and outlook. Do not mention GPT or OpenAI.',
         },
         {
           role: 'user',
@@ -28,63 +28,19 @@ app.get('/solana-analysis', async (req, res) => {
     const easternTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
     let content = response.choices?.[0]?.message?.content || '';
 
-    // Remove ```html and ``` if present
-    content = content.replace(/```html\s*|```/g, '');
+    // Remove accidental markdown wrapping like ```html and ```
+    content = content.replace(/^```html\s*/i, '').replace(/```$/, '').trim();
 
-    // Insert timestamp under heading or as needed
-    if (/<p style=".*?">.*?<\/p>/.test(content)) {
-      content = content.replace(
-        /<p style=".*?">.*?<\/p>/,
-        `<p style="font-size:13px;color:#999;margin-top:-10px;">
-          Last updated: ${easternTime}<br>
-          <em>TECHNICAL ANALYSIS BY JARS</em>
-        </p>`
-      );
-    } else {
-      content = content.replace(
-        /(<h2[^>]*>Solana Perpetual Analysis<\/h2>)/,
-        `$1\n<p style="font-size:13px;color:#999;margin-top:-10px;">
-          Last updated: ${easternTime}<br>
-          <em>TECHNICAL ANALYSIS BY JARS</em>
-        </p>`
-      );
-    }
-
-    // Wrap content in styled container matching your site theme
+    // Wrap the content in a black-themed container and fix font colors
     content = `
-    <div style="background:#0d0d0d;color:#ffffff;font-family:'Trebuchet MS',sans-serif;padding:20px;text-align:center;">
-      <style>
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 20px;
-        }
-        th, td {
-          padding: 12px;
-          border: 1px solid #444;
-        }
-        th {
-          background-color: #222;
-          color: #e02c2c;
-        }
-        tr:nth-child(even) {
-          background-color: #111;
-        }
-        h2 {
-          color: #017a36;
-        }
-        p, td {
-          color: #ffffff;
-        }
-      </style>
+    <div style="background-color: black; padding: 20px; font-family: Arial, sans-serif; color: white;">
       ${content}
+      <p style="font-size:13px;color:#999;margin-top:-10px;">
+        Last updated: ${easternTime}<br>
+        <em>TECHNICAL ANALYSIS BY JARS</em>
+      </p>
     </div>
-    <script>
-      window.parent.postMessage(
-        { height: document.body.scrollHeight },
-        "https://tradewithjars.net"
-      );
-    </script>`;
+    `;
 
     fs.writeFileSync('./public/solana-analysis.html', content, 'utf8');
     res.send('✅ Analysis updated');
