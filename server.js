@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const { Configuration, OpenAIApi } = require("openai");
+const { OpenAI } = require("openai");
 const axios = require("axios");
 require("dotenv").config();
 
@@ -8,10 +8,8 @@ const app = express();
 app.use(cors());
 const port = process.env.PORT || 10000;
 
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-const openai = new OpenAIApi(configuration);
+// Initialize OpenAI properly for v4.x
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 app.get("/", (req, res) => {
   res.send("Server running");
@@ -19,7 +17,7 @@ app.get("/", (req, res) => {
 
 app.get("/api/analysis", async (req, res) => {
   try {
-    // Fetch other CoinGlass data (excluding the chart)
+    // Fetch CoinGlass long/short data
     const response = await axios.get(
       "https://open-api.coinglass.com/public/v4/futures/longShortRate?symbol=SOL",
       {
@@ -42,7 +40,7 @@ Long Accounts: ${longAccount}
 Short Accounts: ${shortAccount}
 `;
 
-    const gptResponse = await openai.createChatCompletion({
+    const gptResponse = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         {
@@ -53,7 +51,7 @@ Short Accounts: ${shortAccount}
       ],
     });
 
-    const result = gptResponse.data.choices[0].message.content;
+    const result = gptResponse.choices[0].message.content;
     res.send(result);
   } catch (error) {
     console.error("❌ OpenAI Error:", error.response?.data || error.message || error);
