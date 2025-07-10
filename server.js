@@ -23,7 +23,7 @@ Then, provide a secondary alternative setup for the opposite direction in case t
 - Leverage
 
 End with a Market Breakdown and Timing & Outlook.
-Format in simple HTML.
+Format in simple HTML using <h2>, <p>, and <table> without inline styles.
 `;
 
     const response = await openai.chat.completions.create({
@@ -31,7 +31,7 @@ Format in simple HTML.
       messages: [
         {
           role: 'system',
-          content: 'You are a crypto technical analyst. Return the entire section in HTML format exactly matching Jars\' website design. The section must contain: 1) a table with long and short trading setups for Solana including entry, trigger, stop, target, and suggested leverage (between 10x–75x); 2) a detailed written market breakdown; 3) a short list of near-term and medium-term timing and outlook. Do not mention GPT or OpenAI.',
+          content: 'You are a crypto technical analyst. Return the entire section in HTML format. Do NOT use any inline styles. Do NOT use colors or CSS. Only return clean HTML using <h2>, <p>, <table>. Avoid repeated headings. Do not mention GPT or OpenAI.',
         },
         {
           role: 'user',
@@ -41,47 +41,34 @@ Format in simple HTML.
     });
 
     const easternTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-    let content = response.choices?.[0]?.message?.content || '';
+    let rawContent = response.choices?.[0]?.message?.content || '';
 
-    // Strip ```html or ``` if they appear
-    content = content.replace(/^```html\s*/i, '').replace(/```$/, '').trim();
+    // Strip any ``` wrappers
+    rawContent = rawContent.replace(/^```html\s*/i, '').replace(/```$/, '').trim();
 
-    // Inject custom styling block at the top to force consistent formatting/colors
-    const styleBlock = `
-<style>
-  body { background-color: #000; color: #fff; font-family: 'Trebuchet MS', sans-serif; margin: 0; padding: 0; }
-  h1, h2, h3 { color: #017a36; }
-  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-  th, td { padding: 12px; border: 1px solid #444; }
-  th { background-color: #111; color: #e02c2c; }
-  tr:nth-child(even) { background-color: #111; }
-  tr:nth-child(odd) { background-color: #000; }
-  p, li { color: #fff; font-size: 16px; line-height: 1.6; }
-</style>
-`;
+    // Build the final full HTML content with locked styles
+    const wrappedContent = `
+<div class="analysis-wrapper">
+  <style>
+    body { margin: 0; padding: 0; background: black; color: white; font-family: 'Trebuchet MS', sans-serif; }
+    .analysis-wrapper { background: black; padding: 20px; color: white; }
+    h2 { color: #017a36; margin-bottom: 10px; }
+    p { font-size: 16px; line-height: 1.6; color: white; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th { background: #111; color: #e02c2c; padding: 10px; border: 1px solid #444; }
+    td { background: #000; color: white; padding: 10px; border: 1px solid #444; }
+    em { color: #999; }
+  </style>
+  <h2>Solana Perpetual Analysis</h2>
+  <p style="font-size:13px;color:#999;margin-top:-10px;">
+    Last updated: ${easternTime}<br>
+    <em>TECHNICAL ANALYSIS BY JARS</em>
+  </p>
+  ${rawContent}
+</div>
+    `;
 
-    // Prepend style block only once
-    if (!content.includes('<style>')) {
-      content = styleBlock + '\n' + content;
-    }
-
-    // Insert timestamp line below H2
-    content = content.replace(
-      /(<h2[^>]*>Solana Perpetual Analysis<\/h2>)/,
-      `$1\n<p style="font-size:13px;color:#999;margin-top:-10px;">
-        Last updated: ${easternTime}<br>
-        <em>TECHNICAL ANALYSIS BY JARS</em>
-      </p>`
-    );
-
-    // Remove trailing whitespace or large gaps
-    content = content.replace(/\s+$/g, '');
-
-    if (!content || content.trim() === '') {
-      content = `<div class="section"><h2 style="color:red;">ERROR</h2><p>Failed to generate analysis from GPT.</p></div>`;
-    }
-
-    fs.writeFileSync('./public/solana-analysis.html', content, 'utf8');
+    fs.writeFileSync('./public/solana-analysis.html', wrappedContent, 'utf8');
     res.send('✅ Analysis updated');
   } catch (err) {
     console.error('❌ GPT Generation Failed:', err);
