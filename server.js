@@ -27,6 +27,7 @@ app.get('/solana-analysis', async (req, res) => {
 
     const easternTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
     let content = response.choices?.[0]?.message?.content || '';
+    content = `<div style="background:#111827;padding:20px;color:#f3f4f6;border-radius:10px;">${content}</div>`;
 
     if (/<p style=".*?">.*?<\/p>/.test(content)) {
       content = content.replace(
