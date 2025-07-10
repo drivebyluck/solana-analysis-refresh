@@ -26,23 +26,41 @@ app.get('/solana-analysis', async (req, res) => {
     });
 
     const easternTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-    const finalHtml = response.choices[0].message.content.replace(
-      /<p style=".*?">.*?<\/p>/,
-      `<p style="font-size:13px;color:#999;margin-top:-10px;">
-        Last updated: ${easternTime}<br>
-        <em>TECHNICAL ANALYSIS BY JARS</em>
-      </p>`
-    );
+    let content = response.choices?.[0]?.message?.content || '';
 
-    fs.writeFileSync('./public/solana-analysis.html', finalHtml, 'utf8');
+    // Try inserting the timestamp only if <p> pattern exists
+    if (/<p style=".*?">.*?<\/p>/.test(content)) {
+      content = content.replace(
+        /<p style=".*?">.*?<\/p>/,
+        `<p style="font-size:13px;color:#999;margin-top:-10px;">
+          Last updated: ${easternTime}<br>
+          <em>TECHNICAL ANALYSIS BY JARS</em>
+        </p>`
+      );
+    } else {
+      // If pattern is missing, add timestamp manually after <h2>
+      content = content.replace(
+        /(<h2[^>]*>Solana Perpetual Analysis<\/h2>)/,
+        `$1\n<p style="font-size:13px;color:#999;margin-top:-10px;">
+          Last updated: ${easternTime}<br>
+          <em>TECHNICAL ANALYSIS BY JARS</em>
+        </p>`
+      );
+    }
+
+    if (!content || content.trim() === '') {
+      content = `<div class="section"><h2 style="color:red;">ERROR</h2><p>Failed to generate analysis from GPT.</p></div>`;
+    }
+
+    fs.writeFileSync('./public/solana-analysis.html', content, 'utf8');
     res.send('✅ Analysis updated');
   } catch (err) {
-    console.error(err);
+    console.error('❌ GPT Generation Failed:', err);
+    fs.writeFileSync('./public/solana-analysis.html', '<div class="section"><h2 style="color:red;">ERROR</h2><p>Failed to generate analysis.</p></div>', 'utf8');
     res.status(500).send('❌ Failed to generate analysis');
   }
 });
 
-// Serve the HTML file publicly
 app.use(express.static('public'));
 
 app.listen(port, () => {
