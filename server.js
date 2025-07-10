@@ -1,122 +1,135 @@
-const express = require("express");
-const fs = require("fs");
-const path = require("path");
-const axios = require("axios");
-const cron = require("node-cron");
-const { ChatGPTAPI } = require("chatgpt");
+const express = require('express');
+const axios = require('axios');
+const cors = require('cors');
+const { ChatGPTAPI } = require('chatgpt');
+require('dotenv').config();
+const cron = require('node-cron');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
+
+app.use(cors());
+app.use(express.static('public'));
 
 const api = new ChatGPTAPI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-app.use(express.static("public"));
-
 async function fetchMarketData() {
-  const cgKey = process.env.COINGLASS_API_KEY;
-  const url = `https://open-api.coinglass.com/public/v4/futures/liquidation_chart?symbol=SOL`;
-
-  const response = await axios.get(url, {
-    headers: { "coinglassSecret": cgKey }
-  });
-
-  return response.data;
-}
-
-function generatePrompt(data) {
-  const latest = data.data[data.data.length - 1];
-  const time = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
-
-  return `
-You are a seasoned crypto analyst. Use the current Solana market data and technicals to fill out this table and generate a detailed forecast. You must include both long and short scenarios, with a clear bias and why. Use real values based on the chart and data. Current price is approximately $${latest.price}. Always output in the following format using HTML only:
-
-<table>
-<tr><th>Bias</th><th>Setup</th><th>Entry</th><th>Trigger</th><th>Stop</th><th>Target</th><th>Leverage</th></tr>
-<tr><td>[Bullish or Bearish]</td><td>[Setup]</td><td>[Entry Price]</td><td>[Trigger]</td><td>[Stop Loss]</td><td>[Target]</td><td>[Leverage]</td></tr>
-</table>
-
-<h3>Market Breakdown</h3>
-<p>[Explain why you think Solana will move the way it will. Use liquidation zones, RSI, MACD, order blocks, OI, volume, recent price action, and other TA tools.]</p>
-
-<h3>Outlook</h3>
-<p>[Short-term outlook: bullish or bearish and why. Provide caution or confidence level.]</p>
-
-<p style="font-size: 0.9em; color: #888;">Updated: ${time}</p>
-`.trim();
+  try {
+    // If CoinGlass is removed, you can skip this and just return an object
+    return {
+      success: true,
+      data: {
+        message: "Liquidation chart data removed as requested."
+      }
+    };
+  } catch (error) {
+    console.error("❌ CoinGlass API Error:", error.response?.data || error.message || error);
+    return { success: false };
+  }
 }
 
 async function generateAnalysis() {
   try {
     const marketData = await fetchMarketData();
-    const prompt = generatePrompt(marketData);
+
+    // Prepare the prompt
+    const prompt = `
+Use the current Solana market conditions to fill out this chart and provide a daily technical analysis.
+
+CHART:
+Bias: Bullish
+Setup: Range Breakout
+Entry: $142.30
+Trigger: 1H candle close above $144.10
+Stop: $140.25
+Target: $151.70
+Leverage: 3x–5x
+
+Write a professional, tactical breakdown explaining this setup. Cover both long and short scenarios. End with a clear recommendation for the day. Make sure the analysis uses crypto trading terminology and current behavior. Format for HTML display, no code blocks.
+
+Use this format:
+<h2>Solana Perpetual Setup</h2>
+<table>...</table>
+<h3>Market Breakdown</h3>
+<p>...</p>
+<h3>Outlook</h3>
+<p>...</p>
+    `;
 
     const res = await api.sendMessage(prompt);
-    const analysis = res.text;
 
-    const styledHTML = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Solana Perpetual Analysis</title>
-  <style>
-    body {
-      margin: 0;
-      background-color: #000;
-      color: white;
-      font-family: Arial, sans-serif;
-      padding: 20px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 25px;
-    }
-    th, td {
-      border: 1px solid #e02c2c;
-      padding: 10px;
-      text-align: center;
-    }
-    th {
-      background-color: #111;
-      color: #e02c2c;
-    }
-    td {
-      background-color: #111;
-    }
-    h3 {
-      color: #017a36;
-      margin-top: 25px;
-    }
-    p {
-      line-height: 1.6;
-    }
-  </style>
-</head>
-<body>
-  <h2 style="color:#e02c2c;">Solana Perpetual Analysis</h2>
-  <div>${analysis}</div>
-</body>
-</html>`;
+    const htmlContent = `
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              background-color: #000000;
+              color: white;
+              margin: 0;
+              padding: 1rem;
+              line-height: 1.6;
+            }
+            h2 {
+              color: #e02c2c;
+              font-size: 1.5rem;
+              margin-bottom: 0.5rem;
+            }
+            h3 {
+              color: #017a36;
+              font-size: 1.2rem;
+              margin-top: 1.5rem;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              background-color: #111;
+              margin-top: 0.5rem;
+            }
+            th, td {
+              border: 1px solid #444;
+              padding: 8px;
+              text-align: left;
+            }
+            th {
+              background-color: #222;
+              color: #e02c2c;
+            }
+            td {
+              color: white;
+            }
+            p {
+              color: white;
+            }
+          </style>
+        </head>
+        <body>
+          ${res.text}
+        </body>
+      </html>
+    `;
 
-    const outputPath = path.join(__dirname, "public", "solana-analysis.html");
-    fs.writeFileSync(outputPath, styledHTML, "utf8");
-    console.log("✅ Analysis updated");
-  } catch (err) {
-    console.error("❌ OpenAI Error:", err.response?.data || err.message || err);
+    fs.writeFileSync(path.join(__dirname, 'public', 'solana-analysis.html'), htmlContent, 'utf8');
+    console.log("✅ Solana analysis updated");
+  } catch (error) {
+    console.error("❌ OpenAI Error:", error.response?.data || error.message || error);
   }
 }
 
-// Run on startup
-generateAnalysis();
-
-// Refresh 4x per day
-cron.schedule("0 0,8,12,17 * * *", () => {
-  console.log("🕐 Running scheduled analysis update");
+// Refresh every 4 times daily
+cron.schedule('0 0,8,12,17 * * *', () => {
+  console.log("⏰ Generating scheduled analysis");
   generateAnalysis();
 });
+
+// Initial run
+generateAnalysis();
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
