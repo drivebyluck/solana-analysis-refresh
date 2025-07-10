@@ -43,47 +43,49 @@ Format in simple HTML.
     const easternTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
     let content = response.choices?.[0]?.message?.content || '';
 
-    // Remove markdown-style code block
+    // Strip ```html or ``` if they appear
     content = content.replace(/^```html\s*/i, '').replace(/```$/, '').trim();
 
-    // Wrap entire content in black background and apply readable font colors
-    content = `
-<div style="background-color:#000000; color:#ffffff; padding:20px;">
-${content}
-</div>
-`.replace(/color:\s*#000000/gi, 'color: #ffffff') // override any black text
- .replace(/color:\s*red/gi, 'color: #e02c2c')      // ensure red matches site
- .replace(/color:\s*green/gi, 'color: #017a36');   // ensure green matches site
+    // Inject custom styling block at the top to force consistent formatting/colors
+    const styleBlock = `
+<style>
+  body { background-color: #000; color: #fff; font-family: 'Trebuchet MS', sans-serif; margin: 0; padding: 0; }
+  h1, h2, h3 { color: #017a36; }
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+  th, td { padding: 12px; border: 1px solid #444; }
+  th { background-color: #111; color: #e02c2c; }
+  tr:nth-child(even) { background-color: #111; }
+  tr:nth-child(odd) { background-color: #000; }
+  p, li { color: #fff; font-size: 16px; line-height: 1.6; }
+</style>
+`;
 
-    // Insert timestamp below heading
-    if (/<p style=".*?">.*?<\/p>/.test(content)) {
-      content = content.replace(
-        /<p style=".*?">.*?<\/p>/,
-        `<p style="font-size:13px;color:#999;margin-top:-10px;">
-          Last updated: ${easternTime}<br>
-          <em>TECHNICAL ANALYSIS BY JARS</em>
-        </p>`
-      );
-    } else {
-      content = content.replace(
-        /(<h2[^>]*>Solana Perpetual Analysis<\/h2>)/,
-        `$1\n<p style="font-size:13px;color:#999;margin-top:-10px;">
-          Last updated: ${easternTime}<br>
-          <em>TECHNICAL ANALYSIS BY JARS</em>
-        </p>`
-      );
+    // Prepend style block only once
+    if (!content.includes('<style>')) {
+      content = styleBlock + '\n' + content;
     }
 
-    // Final safety check
+    // Insert timestamp line below H2
+    content = content.replace(
+      /(<h2[^>]*>Solana Perpetual Analysis<\/h2>)/,
+      `$1\n<p style="font-size:13px;color:#999;margin-top:-10px;">
+        Last updated: ${easternTime}<br>
+        <em>TECHNICAL ANALYSIS BY JARS</em>
+      </p>`
+    );
+
+    // Remove trailing whitespace or large gaps
+    content = content.replace(/\s+$/g, '');
+
     if (!content || content.trim() === '') {
-      content = `<div class="section"><h2 style="color:#e02c2c;">ERROR</h2><p>Failed to generate analysis from GPT.</p></div>`;
+      content = `<div class="section"><h2 style="color:red;">ERROR</h2><p>Failed to generate analysis from GPT.</p></div>`;
     }
 
     fs.writeFileSync('./public/solana-analysis.html', content, 'utf8');
     res.send('✅ Analysis updated');
   } catch (err) {
     console.error('❌ GPT Generation Failed:', err);
-    fs.writeFileSync('./public/solana-analysis.html', '<div class="section"><h2 style="color:#e02c2c;">ERROR</h2><p>Failed to generate analysis.</p></div>', 'utf8');
+    fs.writeFileSync('./public/solana-analysis.html', '<div class="section"><h2 style="color:red;">ERROR</h2><p>Failed to generate analysis.</p></div>', 'utf8');
     res.status(500).send('❌ Failed to generate analysis');
   }
 });
