@@ -105,7 +105,7 @@ async function generateAnalysis() {
     fs.writeFileSync(outputPath, styledHTML, "utf8");
     console.log("✅ Analysis updated");
   } catch (err) {
-    console.error("❌ OpenAI Error:", error.response?.data || error.message || error);
+    console.error("❌ OpenAI Error:", err.response?.data || err.message || err);
   }
 }
 
