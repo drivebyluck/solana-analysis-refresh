@@ -31,15 +31,15 @@ app.get('/solana-analysis', async (req, res) => {
     // Remove accidental markdown wrapping like ```html and ```
     content = content.replace(/^```html\s*/i, '').replace(/```$/, '').trim();
 
-    // Wrap the content in a black-themed container and fix font colors
-    content = `
-    <div style="background-color: black; padding: 20px; font-family: Arial, sans-serif; color: white;">
-      ${content}
+    // Fix black font (turn to white), but don’t touch anything else
+    content = content.replace(/color:\s*#000000/gi, 'color: #ffffff');
+
+    // Inject update timestamp at bottom (not wrapped in extra styling)
+    content += `
       <p style="font-size:13px;color:#999;margin-top:-10px;">
         Last updated: ${easternTime}<br>
         <em>TECHNICAL ANALYSIS BY JARS</em>
       </p>
-    </div>
     `;
 
     fs.writeFileSync('./public/solana-analysis.html', content, 'utf8');
