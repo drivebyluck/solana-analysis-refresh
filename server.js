@@ -1,84 +1,65 @@
-const express = require("express");
-const cors = require("cors");
-const fetch = require("node-fetch");
-const { OpenAI } = require("openai");
-require("dotenv").config();
+const express = require('express');
+const fetch = require('node-fetch');
+const cors = require('cors');
+const { OpenAI } = require('openai');
+
+require('dotenv').config();
 
 const app = express();
-app.use(cors());
 const PORT = process.env.PORT || 10000;
-
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-app.get("/", (req, res) => {
-  res.send("Solana Technical Analysis API");
-});
+app.use(cors());
 
-app.get("/api/analysis", async (req, res) => {
+app.get('/api/analysis', async (req, res) => {
   try {
-    // Fetch SOL price and 24h change from CoinGecko
-    const cgResp = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true");
-    const cgData = await cgResp.json();
-    const solPrice = cgData.solana.usd;
-    const percentChange = cgData.solana.usd_24h_change.toFixed(2);
-    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+    // Fetch Solana price data
+    const priceResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true');
+    const priceData = await priceResponse.json();
+    const currentPrice = priceData.solana.usd;
+    const percentChange = priceData.solana.usd_24h_change.toFixed(2);
 
-    // Construct prompt with injected values
-    const systemPrompt = `
-You are a technical analyst producing market commentary for Solana (SOL) based on the following values:
-- Current Price: $${solPrice}
-- 24h % Change: ${percentChange}%
+    const bias = percentChange > 0 ? 'Bullish' : 'Bearish';
+    const setup = bias === 'Bullish' ? 'Breakout long' : 'Pullback short';
+    const entry = bias === 'Bullish' ? (currentPrice * 1.002).toFixed(2) : (currentPrice * 0.998).toFixed(2);
+    const trigger = bias === 'Bullish' ? (currentPrice * 1.005).toFixed(2) : (currentPrice * 0.995).toFixed(2);
+    const stop = bias === 'Bullish' ? (currentPrice * 0.993).toFixed(2) : (currentPrice * 1.007).toFixed(2);
+    const target = bias === 'Bullish' ? (currentPrice * 1.02).toFixed(2) : (currentPrice * 0.98).toFixed(2);
+    const suggestedLeverage = bias === 'Bullish' ? '3-5x long' : '3-5x short';
 
-Generate the following fields:
-Bias: Bullish or Bearish.
-Setup: What type of setup (e.g., Breakout, Reversal, Consolidation).
-Entry: An ideal price range to enter based on trend.
-Trigger: What confirmation is needed to enter (e.g., break above/below price, volume spike).
-Stop: Where should stop-loss be set.
-Target: Price target(s).
-Leverage: Maximum recommended leverage (1x–10x).
-Paragraph: Explain your reasoning using the above values and realistic market behavior. Do NOT leave any field blank.
+    const timestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
 
-Use simple, concise language, and respond in a JSON object with this structure:
-{
-  "bias": "...",
-  "setup": "...",
-  "entry": "...",
-  "trigger": "...",
-  "stop": "...",
-  "target": "...",
-  "leverage": "...",
-  "percentChange": "...",
-  "currentPrice": "...",
-  "timestamp": "...",
-  "paragraph": "..."
-}
-`;
+    // Create explanation using OpenAI
+    const prompt = `Solana has moved ${percentChange}% over the past 24 hours and is currently priced at $${currentPrice}. 
+Bias: ${bias}. Setup: ${setup}. Entry: $${entry}, Trigger: $${trigger}, Stop: $${stop}, Target: $${target}. 
+Leverage suggestion: ${suggestedLeverage}. Write a short technical analysis summary in a professional and informative tone.`;
 
     const aiResponse = await openai.chat.completions.create({
-      messages: [{ role: "system", content: systemPrompt }],
-      model: "gpt-4",
+      messages: [{ role: 'user', content: prompt }],
+      model: 'gpt-4',
+      temperature: 0.7,
+      max_tokens: 250
     });
 
-    const reply = aiResponse.choices[0].message.content;
-    const parsed = JSON.parse(reply);
+    const explanation = aiResponse.choices[0].message.content;
 
-    // Double-confirm required fields are filled
-    const requiredFields = [
-      "bias", "setup", "entry", "trigger", "stop",
-      "target", "leverage", "percentChange", "currentPrice", "timestamp", "paragraph"
-    ];
+    res.json({
+      timestamp,
+      bias,
+      setup,
+      currentPrice: `$${currentPrice.toFixed(2)}`,
+      percentChange: `${percentChange}%`,
+      entry: `$${entry}`,
+      trigger: `$${trigger}`,
+      stop: `$${stop}`,
+      target: `$${target}`,
+      suggestedLeverage,
+      explanation
+    });
 
-    for (let field of requiredFields) {
-      if (!parsed[field] || parsed[field].trim() === "") {
-        throw new Error(`Missing field in AI response: ${field}`);
-      }
-    }
-
-    res.json(parsed);
-  } catch (err) {
-    console.error("Analysis generation failed:", err);
-    res.status(500).json({ error: "Analysis generation failed", details: err.message });
+  } catch (error) {
+    console.error('Error generating analysis:', error);
+    res.status(500).json({ error: 'Analysis generation failed', details: error.message });
   }
 });
 
