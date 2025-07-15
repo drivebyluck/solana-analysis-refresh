@@ -17,18 +17,18 @@ app.get('/api/analysis', async (req, res) => {
 
     const price = data.solana.usd;
     const change = data.solana.usd_24h_change;
-    const now = new Date();
-    const options = { timeZone: 'America/New_York', hour12: true, hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' };
-    const timestamp = now.toLocaleString('en-US', options);
-
     const bias = change > 0 ? 'Bullish' : 'Bearish';
     const setup = change > 0 ? 'Breakout Long' : 'Pullback Short';
     const leverage = '2x–5x';
-    const color = change > 0 ? '#017a36' : '#e02c2c';
+
     const entry = price.toFixed(2);
     const trigger = (change > 0 ? price * 1.015 : price * 0.985).toFixed(2);
     const stop = (change > 0 ? price * 0.975 : price * 1.025).toFixed(2);
     const target = (change > 0 ? price * 1.05 : price * 0.95).toFixed(2);
+
+    const color = change > 0 ? '#017a36' : '#e02c2c';
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true, hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' });
 
     const html = `
       <div style="color: white; font-family: Arial, sans-serif; background-color: #000; padding: 20px;">
