@@ -1,73 +1,84 @@
-const express = require('express');
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-const cors = require('cors');
+const express = require("express");
+const cors = require("cors");
+const fetch = require("node-fetch");
+const { OpenAI } = require("openai");
+require("dotenv").config();
+
 const app = express();
+app.use(cors());
 const PORT = process.env.PORT || 10000;
 
-app.use(cors());
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-app.get('/', (req, res) => {
-  res.send('Solana Analysis API is live.');
+app.get("/", (req, res) => {
+  res.send("Solana Technical Analysis API");
 });
 
-app.get('/api/analysis', async (req, res) => {
+app.get("/analysis", async (req, res) => {
   try {
-    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true');
-    const data = await response.json();
+    // Fetch SOL price and 24h change from CoinGecko
+    const cgResp = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true");
+    const cgData = await cgResp.json();
+    const solPrice = cgData.solana.usd;
+    const percentChange = cgData.solana.usd_24h_change.toFixed(2);
+    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
 
-    const price = data.solana.usd;
-    const change = data.solana.usd_24h_change;
-    const bias = change > 0 ? 'Bullish' : 'Bearish';
-    const setup = change > 0 ? 'Breakout Long' : 'Pullback Short';
-    const leverage = '2x–5x';
+    // Construct prompt with injected values
+    const systemPrompt = `
+You are a technical analyst producing market commentary for Solana (SOL) based on the following values:
+- Current Price: $${solPrice}
+- 24h % Change: ${percentChange}%
 
-    const entry = price.toFixed(2);
-    const trigger = (change > 0 ? price * 1.015 : price * 0.985).toFixed(2);
-    const stop = (change > 0 ? price * 0.975 : price * 1.025).toFixed(2);
-    const target = (change > 0 ? price * 1.05 : price * 0.95).toFixed(2);
+Generate the following fields:
+Bias: Bullish or Bearish.
+Setup: What type of setup (e.g., Breakout, Reversal, Consolidation).
+Entry: An ideal price range to enter based on trend.
+Trigger: What confirmation is needed to enter (e.g., break above/below price, volume spike).
+Stop: Where should stop-loss be set.
+Target: Price target(s).
+Leverage: Maximum recommended leverage (1x–10x).
+Paragraph: Explain your reasoning using the above values and realistic market behavior. Do NOT leave any field blank.
 
-    const color = change > 0 ? '#017a36' : '#e02c2c';
-    const now = new Date();
-    const timestamp = now.toLocaleString('en-US', {
-      timeZone: 'America/New_York',
-      hour12: true,
-      hour: 'numeric',
-      minute: '2-digit',
-      month: 'short',
-      day: 'numeric'
+Use simple, concise language, and respond in a JSON object with this structure:
+{
+  "bias": "...",
+  "setup": "...",
+  "entry": "...",
+  "trigger": "...",
+  "stop": "...",
+  "target": "...",
+  "leverage": "...",
+  "percentChange": "...",
+  "currentPrice": "...",
+  "timestamp": "...",
+  "paragraph": "..."
+}
+`;
+
+    const aiResponse = await openai.chat.completions.create({
+      messages: [{ role: "system", content: systemPrompt }],
+      model: "gpt-4",
     });
 
-    const html = `
-      <div style="color: white; font-family: Arial, sans-serif; background-color: #000; padding: 20px;">
-        <h3 style="color: ${color}; margin-top: 0;">Solana Perpetual Analysis</h3>
-        <p><strong style="color: white;">Updated:</strong> ${timestamp} EST</p>
-        <table style="width: 100%; margin-bottom: 20px; border-collapse: collapse;">
-          <tr><td><strong style="color: white;">Bias:</strong></td><td style="color: ${color};">${bias}</td></tr>
-          <tr><td><strong style="color: white;">Setup:</strong></td><td>${setup}</td></tr>
-          <tr><td><strong style="color: white;">Current Price:</strong></td><td>$${entry}</td></tr>
-          <tr><td><strong style="color: white;">24h Change:</strong></td><td style="color: ${color};">${change.toFixed(2)}%</td></tr>
-          <tr><td><strong style="color: white;">Entry:</strong></td><td>$${entry}</td></tr>
-          <tr><td><strong style="color: white;">Trigger:</strong></td><td>$${trigger}</td></tr>
-          <tr><td><strong style="color: white;">Stop:</strong></td><td>$${stop}</td></tr>
-          <tr><td><strong style="color: white;">Target:</strong></td><td>$${target}</td></tr>
-          <tr><td><strong style="color: white;">Suggested Leverage:</strong></td><td>${leverage}</td></tr>
-        </table>
-        <p style="line-height: 1.6;">
-          Solana is currently priced at <strong>$${entry}</strong>, reflecting a <span style="color: ${color};">${change.toFixed(2)}%</span> move over the past 24 hours. This suggests a <strong style="color: ${color};">${bias}</strong> market condition. 
-          A recommended strategy would be a <strong>${setup}</strong> setup. Traders may consider an entry at <strong>$${entry}</strong> with a trigger at <strong>$${trigger}</strong>. 
-          Risk can be managed with a stop at <strong>$${stop}</strong> while targeting <strong>$${target}</strong>. The suggested leverage for this trade is <strong>${leverage}</strong>. 
-          Be sure to monitor market sentiment, volume, and key levels for confirmation, and always protect against unexpected volatility.
-        </p>
-        <p style="margin-top: 20px; font-size: 0.9em; color: #aaa;">
-          Technical Analysis by JARS. This is for informational purposes only and not financial advice.
-        </p>
-      </div>
-    `;
+    const reply = aiResponse.choices[0].message.content;
+    const parsed = JSON.parse(reply);
 
-    res.send(html);
-  } catch (error) {
-    console.error('Analysis generation failed:', error);
-    res.status(500).send(`<div style="color: red; background: black; padding: 20px;">Failed to generate analysis.</div>`);
+    // Double-confirm required fields are filled
+    const requiredFields = [
+      "bias", "setup", "entry", "trigger", "stop",
+      "target", "leverage", "percentChange", "currentPrice", "timestamp", "paragraph"
+    ];
+
+    for (let field of requiredFields) {
+      if (!parsed[field] || parsed[field].trim() === "") {
+        throw new Error(`Missing field in AI response: ${field}`);
+      }
+    }
+
+    res.json(parsed);
+  } catch (err) {
+    console.error("Analysis generation failed:", err);
+    res.status(500).json({ error: "Analysis generation failed", details: err.message });
   }
 });
 
