@@ -1,8 +1,8 @@
 import express from 'express';
-import axios from 'axios';
 import dotenv from 'dotenv';
-import OpenAI from 'openai';
-import cron from './cron.js';
+import axios from 'axios';
+import cheerio from 'cheerio';
+import { OpenAI } from 'openai';
 
 dotenv.config();
 
@@ -13,118 +13,91 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-let latestAnalysis = 'Loading Solana analysis...';
+let latestAnalysis = '';
 
-app.use(express.static('public'));
+async function fetchCoinGlassData() {
+  try {
+    const response = await axios.get('https://fapi.coinglass.com/api/futures/longShortChartV3?symbol=SOL');
+    const result = response.data?.data?.list ?? [];
+    const latestEntry = result[result.length - 1];
 
-app.get('/solana-analysis.html', (req, res) => {
-  const html = `
+    if (!latestEntry || !latestEntry.longShortRatio) {
+      throw new Error('Invalid long/short data from CoinGlass');
+    }
+
+    const ratio = parseFloat(latestEntry.longShortRatio);
+    let trend = ratio > 1 ? 'long' : 'short';
+
+    const prompt = `
+      CoinGlass long/short ratio for SOL is ${ratio.toFixed(2)}.
+      Based on this data, write a concise trading setup with:
+      - A bias toward ${trend}
+      - A realistic entry range
+      - Stop loss and take profit
+      - Include a short backup scenario in case the opposite happens
+      Make sure this is specific and formatted for daily crypto traders.
+    `;
+
+    const gptResponse = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7
+    });
+
+    latestAnalysis = gptResponse.choices[0].message.content.trim();
+    console.log('✅ Analysis updated at', new Date().toLocaleString());
+
+  } catch (error) {
+    console.error('❌ Error generating analysis:', error.message);
+    latestAnalysis = 'Error fetching data or generating analysis.';
+  }
+}
+
+// Run once on startup, then every 4 hours
+fetchCoinGlassData();
+setInterval(fetchCoinGlassData, 1000 * 60 * 60 * 4); // 4 hours
+
+app.get('/', (req, res) => {
+  res.send(`
     <html>
       <head>
-        <meta charset="UTF-8">
         <title>Solana Perpetual Analysis</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <style>
           body {
-            background-color: black;
+            background: black;
             color: white;
             font-family: Arial, sans-serif;
-            padding: 20px;
             margin: 0;
+            padding: 20px;
           }
           h1 {
             color: #e02c2c;
-            text-align: center;
-            margin-top: 0;
-          }
-          .label {
-            color: #e02c2c;
-            font-weight: bold;
-            margin-top: 20px;
+            font-size: 24px;
             margin-bottom: 10px;
-            text-align: center;
-          }
-          .content {
-            background-color: #111;
-            padding: 20px;
-            border: 1px solid #e02c2c;
-            border-radius: 8px;
-            white-space: pre-wrap;
           }
           .timestamp {
-            text-align: center;
-            margin-top: 15px;
-            font-size: 0.9em;
-            color: #888;
+            color: #017a36;
+            margin-bottom: 20px;
+          }
+          pre {
+            background: #111;
+            padding: 15px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #ddd;
           }
         </style>
       </head>
       <body>
-        <h1>SOLANA PERPETUAL ANALYSIS</h1>
-        <div class="label">TECHNICAL ANALYSIS BY JARS</div>
-        <div class="content">${latestAnalysis}</div>
-        <div class="timestamp">Last updated: ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}</div>
+        <h1>TECHNICAL ANALYSIS BY JARS</h1>
+        <div class="timestamp">${new Date().toLocaleString()}</div>
+        <pre>${latestAnalysis}</pre>
       </body>
     </html>
-  `;
-  res.send(html);
+  `);
 });
-
-const generateAnalysis = async () => {
-  try {
-    const coinglassRes = await axios.get(
-      'https://open-api.coinglass.com/public/v2/futures/longShortChart?symbol=SOL',
-      {
-        headers: {
-          'accept': 'application/json',
-          'coinglassSecret': process.env.COINGLASS_API_KEY
-        }
-      }
-    );
-
-    let ratio = 'N/A';
-
-    if (
-      coinglassRes.data &&
-      coinglassRes.data.data &&
-      typeof coinglassRes.data.data.longShortRatio !== 'undefined'
-    ) {
-      ratio = coinglassRes.data.data.longShortRatio;
-    } else {
-      console.warn('⚠️ Warning: longShortRatio not found in CoinGlass response:', coinglassRes.data);
-    }
-
-    const prompt = `
-You are JARS, a professional Solana trader. Based on current market sentiment and a long/short ratio of ${ratio}, provide a clear technical analysis report for SOL/USDT Perpetuals. Begin with a trading setup table. Then include:
-
-1. Short-term and long-term outlooks
-2. Bullish (long) and bearish (short) scenarios with triggers
-3. Ideal entry price range, stop loss, and take profit
-4. Leverage suggestions for both setups
-5. Brief rationale for the preferred direction (bullish or bearish)
-6. End with a confidence level (1-10) and reminder to manage risk
-
-Avoid fluff. Use markdown-style formatting (like line breaks, bullet points, headings) and highlight price levels.
-
-Only give me the TA. Do not explain what it is or say “Here’s the analysis.”
-`;
-
-    const gptRes = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [{ role: 'user', content: prompt }],
-    });
-
-    latestAnalysis = gptRes.choices[0].message.content;
-    console.log('✅ Analysis updated at', new Date().toLocaleString());
-  } catch (err) {
-    console.error('❌ Error generating analysis:', err.message || err);
-  }
-};
-
-// Run immediately on startup
-generateAnalysis();
-
-// Refresh every 5.5 hours
-setInterval(generateAnalysis, 5.5 * 60 * 60 * 1000);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
