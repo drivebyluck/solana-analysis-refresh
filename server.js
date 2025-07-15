@@ -1,81 +1,79 @@
 import express from 'express';
+import cors from 'cors';
 import axios from 'axios';
 import cheerio from 'cheerio';
-import { Configuration, OpenAIApi } from 'openai';
-import dotenv from 'dotenv';
-import cors from 'cors';
-
-dotenv.config();
+import OpenAI from 'openai';
 
 const app = express();
-const port = 10000;
+const PORT = process.env.PORT || 10000;
 
+// Setup OpenAI v4
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+// Allow all origins (adjust if needed)
 app.use(cors());
-app.use(express.static('public'));
 
-const openai = new OpenAIApi(
-  new Configuration({
-    apiKey: process.env.OPENAI_API_KEY,
-  })
-);
+app.get('/', (req, res) => {
+  res.send('✅ Solana Analysis API is running.');
+});
 
-app.get('/solana-analysis.html', async (req, res) => {
+app.get('/analysis', async (req, res) => {
   try {
-    const [longShortData, oiData] = await Promise.all([
-      axios.get('https://open-api.coinglass.com/api/pro/v1/futures/longShortAccountRatio?symbol=SOL', {
-        headers: { 'coinglassSecret': process.env.COINGLASS_API_KEY }
-      }),
-      axios.get('https://open-api.coinglass.com/api/pro/v1/futures/openInterestChart?symbol=SOL', {
-        headers: { 'coinglassSecret': process.env.COINGLASS_API_KEY }
-      })
-    ]);
+    // STEP 1: Scrape CoinGlass long/short data (you can replace this with the API if desired)
+    const { data: html } = await axios.get('https://www.coinglass.com/coin/SOL');
+    const $ = cheerio.load(html);
 
-    const longShortRatio = longShortData.data?.data?.list?.at(-1)?.value || 'Unknown';
-    const openInterest = oiData.data?.data?.list?.at(-1)?.sumOpenInterest || 'Unknown';
-
-    const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-
-    const prompt = `
-You are a crypto analyst. Use this Solana market data:
-
-- Long/Short Ratio: ${longShortRatio}
-- Open Interest: ${openInterest}
-
-Write a concise technical analysis and provide:
-1. A bullish (long) scenario
-2. A bearish (short) scenario
-3. A recommended direction (long or short)
-4. Entry, Stop, Target, and Leverage in table format.
-`;
-
-    const chatResponse = await openai.createChatCompletion({
-      model: 'gpt-4',
-      messages: [{ role: 'user', content: prompt }]
+    let longShortRatio = null;
+    $('div').each((_, el) => {
+      const text = $(el).text();
+      if (text.includes('Long/Short')) {
+        const match = text.match(/Long\/Short.*?([\d.]+):([\d.]+)/);
+        if (match) {
+          longShortRatio = `${match[1]} : ${match[2]}`;
+        }
+      }
     });
 
-    const analysis = chatResponse.data.choices[0].message.content;
-    const $ = cheerio.load('<html><body><div class="section"></div></body></html>');
+    if (!longShortRatio) {
+      return res.status(500).json({ error: 'Failed to extract long/short ratio from page.' });
+    }
 
-    $('.section').append(`<h2>SOLANA PERPETUAL ANALYSIS</h2>`);
-    $('.section').append(`<p style="color:#aaa;">Last updated: ${now} EST</p>`);
-    $('.section').append(`<div style="white-space:pre-wrap;text-align:left;margin:auto;max-width:900px;">${analysis}</div>`);
+    // STEP 2: Prepare prompt for GPT
+    const prompt = `
+You are a crypto market analyst focused on Solana. Based on the long/short ratio ${longShortRatio}, provide a concise technical analysis including bias, entry price zone, stop loss, take profit target, and your best guess on short vs long trade preference today. Use a table format at the top like this:
 
-    const height = 200 + analysis.split('\n').length * 22;
-    $('body').append(`<script>window.parent.postMessage({height: ${height}}, "*")</script>`);
+Bias: [Bullish/Bearish]
+Setup: [Scalp / Swing / Trend / Reversal]
+Entry: [Example: 142.50 - 143.10]
+Trigger: [What must happen first]
+Stop: [Example: 140.30]
+Target: [Example: 148.50]
+Leverage: [Suggested range]
 
-    res.send($.html());
+Then write a 3-paragraph analysis in plain English explaining the setup, key levels, and outlook.
+    `;
+
+    // STEP 3: Send to GPT-4o
+    const gptResponse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: 'You are a crypto market analyst.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7
+    });
+
+    const gptText = gptResponse.choices[0].message.content;
+
+    res.status(200).send(gptText);
   } catch (err) {
     console.error('❌ Error generating analysis:', err.message || err);
-    res.send(`
-      <html><body><div class="section">
-      <h2>SOLANA PERPETUAL ANALYSIS</h2>
-      <p style="color:#aaa;">Last updated: ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })} EST</p>
-      <div style="color:red;border:1px solid #e02c2c;padding:10px;margin:10px auto;max-width:600px;">Error fetching data or generating analysis.</div>
-      </div></body></html>
-    `);
+    res.status(500).send('Failed to generate analysis.');
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
