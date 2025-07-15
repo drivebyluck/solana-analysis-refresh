@@ -1,18 +1,16 @@
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
 import OpenAI from 'openai';
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Setup OpenAI v4
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Allow all origins (adjust if needed)
 app.use(cors());
 
 app.get('/', (req, res) => {
@@ -21,7 +19,6 @@ app.get('/', (req, res) => {
 
 app.get('/analysis', async (req, res) => {
   try {
-    // STEP 1: Scrape CoinGlass long/short data (you can replace this with the API if desired)
     const { data: html } = await axios.get('https://www.coinglass.com/coin/SOL');
     const $ = cheerio.load(html);
 
@@ -40,7 +37,6 @@ app.get('/analysis', async (req, res) => {
       return res.status(500).json({ error: 'Failed to extract long/short ratio from page.' });
     }
 
-    // STEP 2: Prepare prompt for GPT
     const prompt = `
 You are a crypto market analyst focused on Solana. Based on the long/short ratio ${longShortRatio}, provide a concise technical analysis including bias, entry price zone, stop loss, take profit target, and your best guess on short vs long trade preference today. Use a table format at the top like this:
 
@@ -55,7 +51,6 @@ Leverage: [Suggested range]
 Then write a 3-paragraph analysis in plain English explaining the setup, key levels, and outlook.
     `;
 
-    // STEP 3: Send to GPT-4o
     const gptResponse = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
