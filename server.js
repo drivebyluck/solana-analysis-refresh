@@ -1,8 +1,8 @@
-import express from 'express';
-import axios from 'axios';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { Configuration, OpenAIApi } from 'openai';
+const express = require('express');
+const axios = require('axios');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const { Configuration, OpenAIApi } = require('openai');
 
 dotenv.config();
 
@@ -36,7 +36,7 @@ app.get('/api/analysis', async (req, res) => {
     }
 
     const prompt = `
-Based on the following Solana liquidation data, provide a detailed technical analysis for traders. Include a table with trading setup (Bias, Setup, Entry, Trigger, Stop, Target, Leverage), then explain the current market conditions, recent activity, and short- vs long-term trade setups. Give one primary strategy and one backup. Use a direct tone with realistic outlooks.
+Based on the following Solana data, provide a detailed technical analysis for traders. Include a table with trading setup (Bias, Setup, Entry, Trigger, Stop, Target, Leverage), then explain the current market conditions, recent activity, and short- vs long-term trade setups. Give one primary strategy and one backup. Use a direct tone with realistic outlooks.
 
 Data: ${JSON.stringify(solData)}
     `;
