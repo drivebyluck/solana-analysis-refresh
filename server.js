@@ -1,7 +1,7 @@
 import express from 'express';
 import axios from 'axios';
-import { Configuration, OpenAIApi } from 'openai';
 import dotenv from 'dotenv';
+import OpenAI from 'openai';
 import cron from './cron.js';
 
 dotenv.config();
@@ -9,10 +9,9 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 10000;
 
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
-const openai = new OpenAIApi(configuration);
 
 let latestAnalysis = 'Loading Solana analysis...';
 
@@ -109,12 +108,12 @@ Avoid fluff. Use markdown-style formatting (like line breaks, bullet points, hea
 Only give me the TA. Do not explain what it is or say “Here’s the analysis.”
 `;
 
-    const gptRes = await openai.createChatCompletion({
+    const gptRes = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [{ role: 'user', content: prompt }],
     });
 
-    latestAnalysis = gptRes.data.choices[0].message.content;
+    latestAnalysis = gptRes.choices[0].message.content;
     console.log('✅ Analysis updated at', new Date().toLocaleString());
   } catch (err) {
     console.error('❌ Error generating analysis:', err.message || err);
