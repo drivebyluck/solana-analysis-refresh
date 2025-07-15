@@ -1,73 +1,67 @@
 // server.js
-
 import express from 'express';
-import cors from 'cors';
 import fetch from 'node-fetch';
+import { Configuration, OpenAIApi } from 'openai';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const port = process.env.PORT || 10000;
+app.use(express.static(path.join(__dirname, 'public')));
 
-app.use(cors());
+const cgKey = process.env.CG_API_KEY;
+const openaiKey = process.env.OPENAI_API_KEY;
 
-// Example: GET route to serve analysis HTML
-app.get('/api/analysis', async (req, res) => {
+const openai = new OpenAIApi(new Configuration({ apiKey: openaiKey }));
+
+async function getLongShortSOL() {
+  const resp = await fetch('https://open-api-v4.coinglass.com/api/futures/global-long-short-account-ratio/history?symbol=SOL&interval=4h', {
+    headers: { 'CG-API-KEY': cgKey }
+  });
+  if (!resp.ok) throw new Error(`CoinGlass ${resp.status}`);
+  const json = await resp.json();
+  const data = json.data.slice(-2);
+  return data.map(x => ({
+    time: new Date(x.time).toISOString(),
+    longPct: x.global_account_long_percent,
+    shortPct: x.global_account_short_percent,
+    ratio: x.global_account_long_short_ratio
+  }));
+}
+
+async function getSummary(solData) {
+  const msg = `SOL long/short % over last two points:\n${solData.map(d=>`${d.time}: long ${d.longPct}%, short ${d.shortPct}%, ratio ${d.ratio}`).join('\n')}\nGive me a quick analysis.`;
+  const resp = await openai.createChatCompletion({
+    model: 'gpt-3.5-turbo',
+    messages: [{ role: 'system', content: 'You are a crypto analyst.' }, { role: 'user', content: msg }],
+    temperature: 0.7
+  });
+  return resp.data.choices[0].message.content;
+}
+
+app.get('/solana-analysis.html', async (req, res) => {
   try {
-    // Optionally fetch data here (CoinGlass, etc.) and use it in the output
-    // For now, hardcoded for demonstration
-    const html = `
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <style>
-            body {
-              background-color: #000000;
-              color: #ffffff;
-              font-family: Arial, sans-serif;
-              padding: 20px;
-              margin: 0;
-            }
-            .box {
-              border: 2px solid #e02c2c;
-              border-radius: 10px;
-              padding: 20px;
-              background-color: #111111;
-              max-width: 800px;
-              margin: auto;
-            }
-            h2 {
-              color: #28a745;
-            }
-            p {
-              line-height: 1.6;
-            }
-          </style>
-          <title>Solana Analysis</title>
-        </head>
-        <body>
-          <div class="box">
-            <h2>SOLANA PERPETUAL ANALYSIS</h2>
-            <p><strong>Bias:</strong> Long</p>
-            <p><strong>Setup:</strong> Bull Flag Breakout</p>
-            <p><strong>Entry:</strong> $153.20</p>
-            <p><strong>Trigger:</strong> 15m candle close above $154.00</p>
-            <p><strong>Stop:</strong> $149.90</p>
-            <p><strong>Target:</strong> $159.00</p>
-            <p><strong>Leverage:</strong> 5-10x</p>
-            <p style="color:#aaa;"><small>Updated: ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}</small></p>
-          </div>
-        </body>
-      </html>
-    `;
-
-    res.send(html);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Error generating analysis');
+    const solData = await getLongShortSOL();
+    const summary = await getSummary(solData);
+    res.send(`
+      <!DOCTYPE html><html><body>
+      <h1>SOL Futures Long/Short Analysis</h1>
+      <p>Last updated: ${new Date().toLocaleString()}</p>
+      ${solData.map(d=>`<div>${d.time}: Long ${d.longPct}%, Short ${d.shortPct}%, Ratio ${d.ratio}</div>`).join('')}
+      <h2>Summary</h2><p>${summary}</p>
+      <script>
+        const height = document.body.scrollHeight;
+        window.parent.postMessage({ height }, '*');
+      </script>
+      </body></html>`);
+  } catch (e) {
+    console.error(e);
+    res.send(`
+      <!DOCTYPE html><html><body>
+      <h1>Error fetching/generated data</h1><p>${e.message}</p>
+      </body></html>`);
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+const port = process.env.PORT || 10000;
+app.listen(port, () => console.log(`Server running on port ${port}`));
