@@ -1,59 +1,62 @@
-const express = require("express");
-const cors = require("cors");
-const dotenv = require("dotenv");
-const OpenAI = require("openai");
-
-dotenv.config();
+const express = require('express');
+const fetch = require('node-fetch');
+const cors = require('cors');
 const app = express();
-const port = process.env.PORT || 10000;
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const PORT = process.env.PORT || 10000;
 
 app.use(cors());
-app.use(express.json());
 
-app.get("/", (req, res) => {
-  res.send("Solana Analysis API is live.");
+app.get('/', (req, res) => {
+  res.send('Solana Analysis API is live.');
 });
 
-app.get("/api/analysis", async (req, res) => {
+app.get('/api/analysis', async (req, res) => {
   try {
-    const gptPrompt = `
-You are a Solana technical analyst.
-Use the latest market data to complete this table and give a full trading breakdown and price outlook:
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true');
+    const data = await response.json();
 
-Bias: 
-Setup:
-Entry:
-Trigger:
-Stop:
-Target:
-Leverage:
+    const price = data.solana.usd;
+    const change = data.solana.usd_24h_change.toFixed(2);
 
-Then write 2 paragraphs:
-1. Detailed setup explanation (based on volume, OI, liquidation zones, etc).
-2. Final outlook—clearly recommend a long or short and give backup scenario.
+    const now = new Date();
+    const options = { timeZone: 'America/New_York', hour12: true, hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' };
+    const timestamp = now.toLocaleString('en-US', options);
 
-Use real values and keep the tone sharp, confident, and concise.
-`;
+    const bias = change > 0 ? 'Bullish' : 'Bearish';
+    const setup = change > 0 ? 'Breakout Long' : 'Pullback Short';
+    const leverage = '2x–5x';
+    const color = change > 0 ? '#017a36' : '#e02c2c';
+    const opposite = change > 0 ? 'Bearish' : 'Bullish';
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [{ role: "user", content: gptPrompt }],
-      temperature: 0.7,
-      max_tokens: 1000,
-    });
+    const html = `
+      <div style="color: white; font-family: Arial, sans-serif; background-color: #000; padding: 20px;">
+        <h3 style="color: ${color}; margin-top: 0;">Solana Perpetual Analysis</h3>
+        <p><strong style="color: white;">Updated:</strong> ${timestamp} EST</p>
+        <table style="width: 100%; margin-bottom: 20px; border-collapse: collapse;">
+          <tr><td><strong style="color: white;">Bias:</strong></td><td style="color: ${color};">${bias}</td></tr>
+          <tr><td><strong style="color: white;">Setup:</strong></td><td>${setup}</td></tr>
+          <tr><td><strong style="color: white;">Current Price:</strong></td><td>$${price}</td></tr>
+          <tr><td><strong style="color: white;">24h Change:</strong></td><td style="color: ${color};">${change}%</td></tr>
+          <tr><td><strong style="color: white;">Suggested Leverage:</strong></td><td>${leverage}</td></tr>
+        </table>
+        <p style="line-height: 1.6;">
+          Given Solana's ${change}% move over the past 24 hours, current momentum suggests a <span style="color: ${color}; font-weight: bold;">${bias.toLowerCase()}</span> trend.
+          Traders could consider a <strong>${setup.toLowerCase()}</strong> setup with proper risk controls. Monitor volume and liquidation zones for confirmation.
+          Be prepared for the <span style="color: white;">opposite</span> scenario and use a tight stop loss if invalidated.
+        </p>
+        <p style="margin-top: 20px; font-size: 0.9em; color: #aaa;">
+          Technical Analysis by JARS. This is for informational purposes only and not financial advice.
+        </p>
+      </div>
+    `;
 
-    const content = completion.choices[0].message.content;
-    res.json({ analysis: content });
+    res.send(html);
   } catch (error) {
-    console.error("OpenAI error:", error.message);
-    res.status(500).json({ error: "Failed to generate analysis." });
+    console.error('Analysis generation failed:', error);
+    res.status(500).send(`<div style="color: red; background: black; padding: 20px;">Failed to generate analysis.</div>`);
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
