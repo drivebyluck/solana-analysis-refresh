@@ -28,7 +28,14 @@ app.get('/api/analysis', async (req, res) => {
 
     const color = change > 0 ? '#017a36' : '#e02c2c';
     const now = new Date();
-    const timestamp = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true, hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' });
+    const timestamp = now.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      hour12: true,
+      hour: 'numeric',
+      minute: '2-digit',
+      month: 'short',
+      day: 'numeric'
+    });
 
     const html = `
       <div style="color: white; font-family: Arial, sans-serif; background-color: #000; padding: 20px;">
@@ -46,9 +53,10 @@ app.get('/api/analysis', async (req, res) => {
           <tr><td><strong style="color: white;">Suggested Leverage:</strong></td><td>${leverage}</td></tr>
         </table>
         <p style="line-height: 1.6;">
-          Given Solana's ${change.toFixed(2)}% move over the past 24 hours, current momentum suggests a <span style="color: ${color}; font-weight: bold;">${bias.toLowerCase()}</span> trend.
-          Traders could consider a <strong>${setup.toLowerCase()}</strong> setup with proper risk controls. Monitor volume and liquidation zones for confirmation.
-          Be prepared for the opposite scenario and use a tight stop loss if invalidated.
+          Solana is currently priced at <strong>$${entry}</strong>, reflecting a <span style="color: ${color};">${change.toFixed(2)}%</span> move over the past 24 hours. This suggests a <strong style="color: ${color};">${bias}</strong> market condition. 
+          A recommended strategy would be a <strong>${setup}</strong> setup. Traders may consider an entry at <strong>$${entry}</strong> with a trigger at <strong>$${trigger}</strong>. 
+          Risk can be managed with a stop at <strong>$${stop}</strong> while targeting <strong>$${target}</strong>. The suggested leverage for this trade is <strong>${leverage}</strong>. 
+          Be sure to monitor market sentiment, volume, and key levels for confirmation, and always protect against unexpected volatility.
         </p>
         <p style="margin-top: 20px; font-size: 0.9em; color: #aaa;">
           Technical Analysis by JARS. This is for informational purposes only and not financial advice.
