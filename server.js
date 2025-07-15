@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const fetch = require('node-fetch');
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const app = express();
 const PORT = 10000;
 
@@ -26,7 +26,7 @@ app.get('/api/analysis', async (req, res) => {
     const explanation = `This technical analysis presents a ${bias.toLowerCase()} outlook for Solana (SOL) with a ${setup.toLowerCase()} setup. The entry point for this trade is at $${entry}, which is ${
       bias === 'Bearish' ? 'slightly below' : 'slightly above'
     } its current trading price of $${currentPrice}. The trigger point is set at $${trigger}, which is the price level that, if reached, would activate the ${bias.toLowerCase()} position.
-    
+
 The stop is set at $${stop}, ${
       bias === 'Bearish' ? 'above' : 'below'
     } the current trading price, to limit potential losses if the price unexpectedly ${
