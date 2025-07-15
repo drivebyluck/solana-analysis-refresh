@@ -1,7 +1,7 @@
 {
   "name": "solana-analysis-refresh",
   "version": "1.0.0",
-  "description": "Solana analysis backend for TradeWithJars.net",
+  "description": "Solana Technical Analysis Generator using OpenAI",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -11,8 +11,7 @@
     "axios": "^1.6.8",
     "cheerio": "^1.0.0-rc.12",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.19.2",
-    "openai": "^4.30.1"
+    "express": "^4.18.4",
+    "openai": "^4.39.1"
   }
 }
