@@ -2,7 +2,7 @@ import express from 'express';
 import fetch from 'node-fetch';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { Configuration, OpenAIApi } from 'openai';
+import OpenAI from 'openai';
 
 dotenv.config();
 
@@ -14,12 +14,10 @@ const COINGLASS_API_KEY = process.env.COINGLASS_API_KEY;
 const COINGLASS_ENDPOINT = 'https://open-api.coinglass.com/public/v2/futures/liquidation_chart';
 const TARGET_SYMBOL = 'SOL';
 
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
-const openai = new OpenAIApi(configuration);
 
-// Optional: for debugging root route
 app.get('/', (req, res) => {
   res.send('Solana Analysis API is live.');
 });
@@ -53,7 +51,7 @@ app.get('/api/analysis', async (req, res) => {
       Please provide a brief technical analysis summary including which side (long or short) looks riskier, possible support/resistance, and expected move within the next 12 hours.
     `;
 
-    const gptResponse = await openai.createChatCompletion({
+    const gptResponse = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [
         { role: 'system', content: 'You are a crypto market analyst.' },
@@ -63,7 +61,7 @@ app.get('/api/analysis', async (req, res) => {
       max_tokens: 400
     });
 
-    const gptOutput = gptResponse.data.choices[0].message.content;
+    const gptOutput = gptResponse.choices[0].message.content;
     res.json({ summary: gptOutput });
 
   } catch (error) {
