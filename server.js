@@ -1,22 +1,14 @@
-import express from 'express';
-import fetch from 'node-fetch';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import OpenAI from 'openai';
+const express = require('express');
+const axios = require('axios');
+const cors = require('cors');
+const { OpenAIApi, Configuration } = require('openai');
 
-dotenv.config();
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
+
 app.use(cors());
-
-const COINGLASS_API_KEY = process.env.COINGLASS_API_KEY;
-const COINGLASS_ENDPOINT = 'https://open-api.coinglass.com/public/v2/futures/liquidation_chart';
-const TARGET_SYMBOL = 'SOL';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
 
 app.get('/', (req, res) => {
   res.send('Solana Analysis API is live.');
@@ -24,48 +16,46 @@ app.get('/', (req, res) => {
 
 app.get('/api/analysis', async (req, res) => {
   try {
-    const response = await fetch(`${COINGLASS_ENDPOINT}?symbol=${TARGET_SYMBOL}&interval=60`, {
+    const response = await axios.get('https://api.coinglass.com/api/v1/futures/liquidation_chart', {
       headers: {
-        'coinglassSecret': COINGLASS_API_KEY
-      }
+        'coinglassSecret': process.env.COINGLASS_API_KEY,
+      },
+      params: {
+        symbol: 'SOL',
+        interval: '5m',
+        time_type: 'hour',
+        type: 'longShortAmount',
+      },
     });
 
-    const data = await response.json();
+    const solData = response.data?.data?.find(d => d.symbol === 'SOL');
 
-    if (!data || !data.data || !data.data.longVol || !data.data.shortVol) {
+    if (!solData) {
       return res.status(404).json({ error: 'No SOL data available.' });
     }
 
-    const { longVol, shortVol, time } = data.data;
+    const prompt = `
+Based on the following Solana liquidation data, provide a detailed technical analysis for traders. Include a table with trading setup (Bias, Setup, Entry, Trigger, Stop, Target, Leverage), then explain the current market conditions, recent activity, and short- vs long-term trade setups. Give one primary strategy and one backup. Use a direct tone with realistic outlooks.
 
-    const formatted = `
-      Long Liquidations: ${longVol}
-      Short Liquidations: ${shortVol}
-      Timestamp: ${new Date(time).toLocaleString()}
+Data: ${JSON.stringify(solData)}
     `;
 
-    const gptPrompt = `
-      Based on this Solana liquidation data:
-      ${formatted}
-
-      Please provide a brief technical analysis summary including which side (long or short) looks riskier, possible support/resistance, and expected move within the next 12 hours.
-    `;
-
-    const gptResponse = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        { role: 'system', content: 'You are a crypto market analyst.' },
-        { role: 'user', content: gptPrompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 400
+    const configuration = new Configuration({
+      apiKey: process.env.OPENAI_API_KEY,
     });
 
-    const gptOutput = gptResponse.choices[0].message.content;
-    res.json({ summary: gptOutput });
+    const openai = new OpenAIApi(configuration);
 
+    const completion = await openai.createChatCompletion({
+      model: 'gpt-4',
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const analysis = completion.data.choices[0].message.content;
+
+    res.json({ analysis });
   } catch (error) {
-    console.error('Error fetching analysis:', error);
+    console.error('Error fetching or processing analysis:', error.message);
     res.status(500).json({ error: 'Failed to fetch Solana analysis.' });
   }
 });
