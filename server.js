@@ -1,7 +1,6 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import axios from 'axios';
-import * as cheerio from 'cheerio';
+import dotenv from 'dotenv';
 import { OpenAI } from 'openai';
 
 dotenv.config();
@@ -13,19 +12,24 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-let latestAnalysis = '';
+let latestAnalysis = 'Analysis not yet generated.';
 
 async function fetchCoinGlassData() {
   try {
-    const response = await axios.get('https://fapi.coinglass.com/api/futures/longShortChartV3?symbol=SOL');
-    const result = response.data?.data?.list ?? [];
-    const latestEntry = result[result.length - 1];
+    const response = await axios.get('https://open-api.coinglass.com/public/v2/long-short-ratio?symbol=SOL', {
+      headers: {
+        'coinglassSecret': process.env.COINGLASS_API_KEY
+      }
+    });
 
-    if (!latestEntry || !latestEntry.longShortRatio) {
+    const result = response.data?.data?.longShortRatioList;
+    const latestEntry = result?.[result.length - 1];
+
+    if (!latestEntry || !latestEntry.ratio) {
       throw new Error('Invalid long/short data from CoinGlass');
     }
 
-    const ratio = parseFloat(latestEntry.longShortRatio);
+    const ratio = parseFloat(latestEntry.ratio);
     let trend = ratio > 1 ? 'long' : 'short';
 
     const prompt = `
@@ -53,50 +57,11 @@ async function fetchCoinGlassData() {
   }
 }
 
-// Run once on startup, then every 4 hours
-fetchCoinGlassData();
-setInterval(fetchCoinGlassData, 1000 * 60 * 60 * 4); // 4 hours
+setInterval(fetchCoinGlassData, 1000 * 60 * 60); // every hour
+fetchCoinGlassData(); // initial fetch
 
 app.get('/', (req, res) => {
-  res.send(`
-    <html>
-      <head>
-        <title>Solana Perpetual Analysis</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style>
-          body {
-            background: black;
-            color: white;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-          }
-          h1 {
-            color: #e02c2c;
-            font-size: 24px;
-            margin-bottom: 10px;
-          }
-          .timestamp {
-            color: #017a36;
-            margin-bottom: 20px;
-          }
-          pre {
-            background: #111;
-            padding: 15px;
-            border-radius: 8px;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            color: #ddd;
-          }
-        </style>
-      </head>
-      <body>
-        <h1>TECHNICAL ANALYSIS BY JARS</h1>
-        <div class="timestamp">${new Date().toLocaleString()}</div>
-        <pre>${latestAnalysis}</pre>
-      </body>
-    </html>
-  `);
+  res.send(latestAnalysis);
 });
 
 app.listen(port, () => {
