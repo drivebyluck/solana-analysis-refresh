@@ -1,131 +1,79 @@
 import express from 'express';
 import axios from 'axios';
+import cheerio from 'cheerio';
+import { Configuration, OpenAIApi } from 'openai';
 import dotenv from 'dotenv';
-import { OpenAI } from 'openai';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import cors from 'cors';
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 10000;
+const port = 10000;
 
-// For ES Modules: get __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+app.use(cors());
+app.use(express.static('public'));
 
-// Initialize OpenAI using the v4 SDK (no Configuration export required)
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const openai = new OpenAIApi(
+  new Configuration({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+);
 
-let latestAnalysis = 'Analysis not yet generated.';
-
-async function fetchCoinGlassData() {
+app.get('/solana-analysis.html', async (req, res) => {
   try {
-    // Use the correct CoinGlass endpoint (replace with your paid endpoint if needed)
-    const response = await axios.get(
-      'https://open-api.coinglass.com/api/pro/v1/futures/longShortChart?symbol=SOL',
-      {
-        headers: {
-          'coinglassSecret': process.env.COINGLASS_API_KEY
-        }
-      }
-    );
-    // The expected structure is: response.data.data.list (an array)
-    const data = response.data?.data;
-    if (!data || !data.list || data.list.length === 0) {
-      throw new Error('Missing long/short data');
-    }
-    const latest = data.list[data.list.length - 1];
-    if (!latest.ratio) {
-      throw new Error('Missing ratio in latest entry');
-    }
-    const ratio = parseFloat(latest.ratio);
-    const trend = ratio > 1 ? 'long' : 'short';
+    const [longShortData, oiData] = await Promise.all([
+      axios.get('https://open-api.coinglass.com/api/pro/v1/futures/longShortAccountRatio?symbol=SOL', {
+        headers: { 'coinglassSecret': process.env.COINGLASS_API_KEY }
+      }),
+      axios.get('https://open-api.coinglass.com/api/pro/v1/futures/openInterestChart?symbol=SOL', {
+        headers: { 'coinglassSecret': process.env.COINGLASS_API_KEY }
+      })
+    ]);
+
+    const longShortRatio = longShortData.data?.data?.list?.at(-1)?.value || 'Unknown';
+    const openInterest = oiData.data?.data?.list?.at(-1)?.sumOpenInterest || 'Unknown';
+
+    const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
 
     const prompt = `
-The long/short ratio for Solana (SOL) is ${ratio.toFixed(2)}.
-Traders show a bias toward ${trend} positions.
-Based on typical market behavior, provide a detailed technical analysis for SOL/USDT Perpetuals that includes:
-- A trading setup table with columns: Bias, Setup, Entry, Trigger, Stop, Target, Leverage.
-- A clear market breakdown explaining key support/resistance, order blocks, and recent volume.
-- Two scenarios: a primary recommendation and a backup plan if the preferred setup fails.
-- A short-term and medium-term outlook.
-Format your response in clean HTML (using only <h2>, <p>, <table>, etc.) without inline styles.
-    `;
+You are a crypto analyst. Use this Solana market data:
 
-    const gptResponse = await openai.chat.completions.create({
+- Long/Short Ratio: ${longShortRatio}
+- Open Interest: ${openInterest}
+
+Write a concise technical analysis and provide:
+1. A bullish (long) scenario
+2. A bearish (short) scenario
+3. A recommended direction (long or short)
+4. Entry, Stop, Target, and Leverage in table format.
+`;
+
+    const chatResponse = await openai.createChatCompletion({
       model: 'gpt-4',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7
+      messages: [{ role: 'user', content: prompt }]
     });
 
-    latestAnalysis = gptResponse.choices[0].message.content.trim();
-    console.log('✅ Analysis updated at', new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  } catch (error) {
-    console.error('❌ Error generating analysis:', error.response?.data || error.message || error);
-    latestAnalysis = 'Error fetching data or generating analysis.';
+    const analysis = chatResponse.data.choices[0].message.content;
+    const $ = cheerio.load('<html><body><div class="section"></div></body></html>');
+
+    $('.section').append(`<h2>SOLANA PERPETUAL ANALYSIS</h2>`);
+    $('.section').append(`<p style="color:#aaa;">Last updated: ${now} EST</p>`);
+    $('.section').append(`<div style="white-space:pre-wrap;text-align:left;margin:auto;max-width:900px;">${analysis}</div>`);
+
+    const height = 200 + analysis.split('\n').length * 22;
+    $('body').append(`<script>window.parent.postMessage({height: ${height}}, "*")</script>`);
+
+    res.send($.html());
+  } catch (err) {
+    console.error('❌ Error generating analysis:', err.message || err);
+    res.send(`
+      <html><body><div class="section">
+      <h2>SOLANA PERPETUAL ANALYSIS</h2>
+      <p style="color:#aaa;">Last updated: ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })} EST</p>
+      <div style="color:red;border:1px solid #e02c2c;padding:10px;margin:10px auto;max-width:600px;">Error fetching data or generating analysis.</div>
+      </div></body></html>
+    `);
   }
-}
-
-// Run immediately on startup, then update every 4 hours
-fetchCoinGlassData();
-setInterval(fetchCoinGlassData, 1000 * 60 * 60 * 4);
-
-// Serve the analysis in a styled HTML template for your iframe
-app.get('/solana-analysis.html', (req, res) => {
-  const timestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-  const html = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Solana Perpetual Analysis</title>
-  <style>
-    body {
-      margin: 0;
-      background-color: #000;
-      color: #fff;
-      font-family: Arial, sans-serif;
-      padding: 20px;
-    }
-    h2 {
-      text-align: center;
-      color: #017a36;
-    }
-    .timestamp {
-      text-align: center;
-      color: #888;
-      margin-bottom: 20px;
-    }
-    .analysis-content {
-      background-color: #111;
-      padding: 20px;
-      border: 1px solid #e02c2c;
-      border-radius: 8px;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-    }
-  </style>
-</head>
-<body>
-  <h2>SOLANA PERPETUAL ANALYSIS</h2>
-  <div class="timestamp">Last updated: ${timestamp} EST</div>
-  <div class="analysis-content">${latestAnalysis}</div>
-  <script>
-    window.parent.postMessage({ height: document.body.scrollHeight }, '*');
-  </script>
-</body>
-</html>
-  `;
-  res.send(html);
-});
-
-// Health check route
-app.get('/', (req, res) => {
-  res.send('Server running');
 });
 
 app.listen(port, () => {
