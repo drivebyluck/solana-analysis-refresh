@@ -1,7 +1,9 @@
 const express = require('express');
-const fetch = require('node-fetch');
 const cors = require('cors');
 const { OpenAI } = require('openai');
+
+// Manual import of fetch for compatibility
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 require('dotenv').config();
 
@@ -13,9 +15,10 @@ app.use(cors());
 
 app.get('/api/analysis', async (req, res) => {
   try {
-    // Fetch Solana price data
+    // Fetch price data from CoinGecko
     const priceResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true');
     const priceData = await priceResponse.json();
+
     const currentPrice = priceData.solana.usd;
     const percentChange = priceData.solana.usd_24h_change.toFixed(2);
 
@@ -29,10 +32,7 @@ app.get('/api/analysis', async (req, res) => {
 
     const timestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
 
-    // Create explanation using OpenAI
-    const prompt = `Solana has moved ${percentChange}% over the past 24 hours and is currently priced at $${currentPrice}. 
-Bias: ${bias}. Setup: ${setup}. Entry: $${entry}, Trigger: $${trigger}, Stop: $${stop}, Target: $${target}. 
-Leverage suggestion: ${suggestedLeverage}. Write a short technical analysis summary in a professional and informative tone.`;
+    const prompt = `Solana is currently priced at $${currentPrice} with a 24h change of ${percentChange}%. Bias is ${bias}, setup is ${setup}. Entry: $${entry}, Trigger: $${trigger}, Stop: $${stop}, Target: $${target}, Leverage: ${suggestedLeverage}. Write a short professional analysis.`;
 
     const aiResponse = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
