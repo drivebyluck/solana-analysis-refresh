@@ -1,5 +1,5 @@
 const express = require('express');
-const fetch = require('node-fetch');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args)); // 👈 Fixes fetch error
 const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 10000;
