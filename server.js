@@ -1,102 +1,132 @@
 import express from 'express';
-import fs from 'fs';
 import axios from 'axios';
+import { Configuration, OpenAIApi } from 'openai';
 import dotenv from 'dotenv';
-import { OpenAI } from 'openai';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import cron from './cron.js';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 10000;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const openai = new OpenAI({
+const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
 });
+const openai = new OpenAIApi(configuration);
 
-app.use(express.static(path.join(__dirname, 'public')));
+let latestAnalysis = 'Loading Solana analysis...';
 
-async function fetchAndWriteAnalysis() {
+app.use(express.static('public'));
+
+app.get('/solana-analysis.html', (req, res) => {
+  const html = `
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Solana Perpetual Analysis</title>
+        <style>
+          body {
+            background-color: black;
+            color: white;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            margin: 0;
+          }
+          h1 {
+            color: #e02c2c;
+            text-align: center;
+            margin-top: 0;
+          }
+          .label {
+            color: #e02c2c;
+            font-weight: bold;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            text-align: center;
+          }
+          .content {
+            background-color: #111;
+            padding: 20px;
+            border: 1px solid #e02c2c;
+            border-radius: 8px;
+            white-space: pre-wrap;
+          }
+          .timestamp {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 0.9em;
+            color: #888;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>SOLANA PERPETUAL ANALYSIS</h1>
+        <div class="label">TECHNICAL ANALYSIS BY JARS</div>
+        <div class="content">${latestAnalysis}</div>
+        <div class="timestamp">Last updated: ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}</div>
+      </body>
+    </html>
+  `;
+  res.send(html);
+});
+
+const generateAnalysis = async () => {
   try {
-    const coinglassData = await axios.get(
-      'https://api.coinglass.com/public/v4/futures/long_short_account_ratio?symbol=SOL'
+    const coinglassRes = await axios.get(
+      'https://open-api.coinglass.com/public/v2/futures/longShortChart?symbol=SOL',
+      {
+        headers: {
+          'accept': 'application/json',
+          'coinglassSecret': process.env.COINGLASS_API_KEY
+        }
+      }
     );
 
-    const ratio = coinglassData.data.data.longShortRatio || 'N/A';
+    let ratio = 'N/A';
+
+    if (
+      coinglassRes.data &&
+      coinglassRes.data.data &&
+      typeof coinglassRes.data.data.longShortRatio !== 'undefined'
+    ) {
+      ratio = coinglassRes.data.data.longShortRatio;
+    } else {
+      console.warn('⚠️ Warning: longShortRatio not found in CoinGlass response:', coinglassRes.data);
+    }
 
     const prompt = `
-You are a professional Solana trader. Based on current market conditions and the long/short ratio of ${ratio}, generate a detailed technical analysis for Solana (SOL) including a table with the trading setup (Bias, Setup, Entry, Trigger, Stop, Target, Leverage), a paragraph on the current market conditions, and two scenarios: a long scenario and a short scenario. Then, clearly state which is more likely today and why.
+You are JARS, a professional Solana trader. Based on current market sentiment and a long/short ratio of ${ratio}, provide a clear technical analysis report for SOL/USDT Perpetuals. Begin with a trading setup table. Then include:
 
-Make the output clear, easy to read, and realistic. Use this data: Long/Short Ratio = ${ratio}
-    `;
+1. Short-term and long-term outlooks
+2. Bullish (long) and bearish (short) scenarios with triggers
+3. Ideal entry price range, stop loss, and take profit
+4. Leverage suggestions for both setups
+5. Brief rationale for the preferred direction (bullish or bearish)
+6. End with a confidence level (1-10) and reminder to manage risk
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+Avoid fluff. Use markdown-style formatting (like line breaks, bullet points, headings) and highlight price levels.
+
+Only give me the TA. Do not explain what it is or say “Here’s the analysis.”
+`;
+
+    const gptRes = await openai.createChatCompletion({
+      model: 'gpt-4',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
     });
 
-    const analysisText = completion.choices[0].message.content;
-
-    const wrappedContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Solana Analysis</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background: black;
-      color: white;
-      font-family: Arial, sans-serif;
-      padding: 20px;
-    }
-    h1, h2, h3 {
-      color: #e02c2c;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 20px;
-    }
-    table, th, td {
-      border: 1px solid #e02c2c;
-    }
-    th, td {
-      padding: 8px;
-      text-align: left;
-    }
-    .green { color: #017a36; }
-    .red { color: #e02c2c; }
-  </style>
-</head>
-<body>
-  <h2>TECHNICAL ANALYSIS BY JARS</h2>
-  <p>Last Updated: ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}</p>
-  ${analysisText}
-</body>
-</html>
-    `;
-
-    fs.writeFileSync(path.join(__dirname, 'public', 'solana-analysis.html'), wrappedContent, 'utf8');
-    console.log('✅ Analysis updated successfully');
-  } catch (error) {
-    console.error('❌ Error generating analysis:', error.response?.data || error.message);
+    latestAnalysis = gptRes.data.choices[0].message.content;
+    console.log('✅ Analysis updated at', new Date().toLocaleString());
+  } catch (err) {
+    console.error('❌ Error generating analysis:', err.message || err);
   }
-}
+};
 
-app.get('/refresh', async (req, res) => {
-  await fetchAndWriteAnalysis();
-  res.send('✅ Refreshed analysis');
-});
+// Run immediately on startup
+generateAnalysis();
+
+// Refresh every 5.5 hours
+setInterval(generateAnalysis, 5.5 * 60 * 60 * 1000);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
-  fetchAndWriteAnalysis();
 });
