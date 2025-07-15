@@ -1,74 +1,71 @@
 import express from 'express';
-import cors from 'cors';
-import axios from 'axios';
-import * as cheerio from 'cheerio';
-import OpenAI from 'openai';
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const port = process.env.PORT || 10000;
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
-app.use(cors());
-
-app.get('/', (req, res) => {
-  res.send('✅ Solana Analysis API is running.');
-});
-
-app.get('/analysis', async (req, res) => {
-  try {
-    const { data: html } = await axios.get('https://www.coinglass.com/coin/SOL');
-    const $ = cheerio.load(html);
-
-    let longShortRatio = null;
-    $('div').each((_, el) => {
-      const text = $(el).text();
-      if (text.includes('Long/Short')) {
-        const match = text.match(/Long\/Short.*?([\d.]+):([\d.]+)/);
-        if (match) {
-          longShortRatio = `${match[1]} : ${match[2]}`;
+// Serve dynamic HTML on /solana-analysis.html
+app.get('/solana-analysis.html', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Solana Analysis</title>
+      <style>
+        body {
+          background-color: black;
+          color: white;
+          font-family: Arial, sans-serif;
+          padding: 20px;
         }
-      }
-    });
-
-    if (!longShortRatio) {
-      return res.status(500).json({ error: 'Failed to extract long/short ratio from page.' });
-    }
-
-    const prompt = `
-You are a crypto market analyst focused on Solana. Based on the long/short ratio ${longShortRatio}, provide a concise technical analysis including bias, entry price zone, stop loss, take profit target, and your best guess on short vs long trade preference today. Use a table format at the top like this:
-
-Bias: [Bullish/Bearish]
-Setup: [Scalp / Swing / Trend / Reversal]
-Entry: [Example: 142.50 - 143.10]
-Trigger: [What must happen first]
-Stop: [Example: 140.30]
-Target: [Example: 148.50]
-Leverage: [Suggested range]
-
-Then write a 3-paragraph analysis in plain English explaining the setup, key levels, and outlook.
-    `;
-
-    const gptResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: 'You are a crypto market analyst.' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7
-    });
-
-    const gptText = gptResponse.choices[0].message.content;
-
-    res.status(200).send(gptText);
-  } catch (err) {
-    console.error('❌ Error generating analysis:', err.message || err);
-    res.status(500).send('Failed to generate analysis.');
-  }
+        h1 {
+          color: #e02c2c;
+        }
+        .green { color: #017a36; }
+        .red { color: #e02c2c; }
+        table {
+          border-collapse: collapse;
+          width: 100%;
+          margin-bottom: 20px;
+        }
+        th, td {
+          border: 1px solid #666;
+          padding: 8px;
+          text-align: left;
+        }
+        th {
+          background-color: #222;
+        }
+        iframe {
+          width: 100%;
+          border: none;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>SOLANA PERPETUAL ANALYSIS</h1>
+      <p>📅 Last updated: <span id="timestamp"></span></p>
+      <table>
+        <tr><th>Bias</th><th>Setup</th><th>Entry</th><th>Trigger</th><th>Stop</th><th>Target</th><th>Leverage</th></tr>
+        <tr><td>Long</td><td>Breakout</td><td>$140</td><td>$142</td><td>$138</td><td>$150</td><td>5x</td></tr>
+      </table>
+      <p><span class="green">Long Scenario:</span> If SOL breaks above $142, expect momentum to carry toward $150.</p>
+      <p><span class="red">Short Scenario:</span> If it rejects and drops under $138, $132 becomes a realistic downside target.</p>
+      <script>
+        const now = new Date();
+        document.getElementById("timestamp").textContent = now.toLocaleString();
+      </script>
+    </body>
+    </html>
+  `);
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Root path message
+app.get('/', (req, res) => {
+  res.send('<h2>✅ Solana Analysis API is running.</h2>');
+});
+
+app.listen(port, () => {
+  console.log(\`Server running on port \${port}\`);
 });
