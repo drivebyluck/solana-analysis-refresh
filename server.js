@@ -1,64 +1,63 @@
 const express = require('express');
 const cors = require('cors');
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const app = express();
 const PORT = 10000;
 
 app.use(cors());
+app.use(express.static('public'));
+
+const generateAnalysisHTML = async () => {
+  const timestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+
+  // Replace this with actual fetch + logic using your CoinGlass data
+  const data = {
+    bias: "Bearish",
+    setup: "Pullback short",
+    entry: "$161.24",
+    trigger: "$161.49",
+    stop: "$162.94",
+    target: "$158.74",
+    suggestedLeverage: "3–5× short",
+    explanation: `This technical analysis presents a bearish outlook for Solana (SOL)...`,
+    currentPrice: "$161.74",
+    percentChange: "-0.44%",
+    timestamp
+  };
+
+  return `
+    <div style="background-color:#0d0d0d; color:white; font-family:'Trebuchet MS', sans-serif; padding:20px;">
+      <h2 style="color:#017a36;">Solana Perpetual Analysis</h2>
+      <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+        <thead>
+          <tr style="background-color:#1a1a1a; color:#e02c2c;">
+            <th>Bias</th><th>Setup</th><th>Entry</th><th>Trigger</th><th>Stop</th><th>Target</th><th>Leverage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="background-color:#111; text-align:center;">
+            <td>${data.bias}</td>
+            <td>${data.setup}</td>
+            <td>${data.entry}</td>
+            <td>${data.trigger}</td>
+            <td>${data.stop}</td>
+            <td>${data.target}</td>
+            <td>${data.suggestedLeverage}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong style="color:#e02c2c;">Current Price:</strong> ${data.currentPrice} | <strong style="color:#e02c2c;">24h Change:</strong> ${data.percentChange}</p>
+      <p>${data.explanation}</p>
+      <p style="color:#888; font-size:14px;">Last updated: ${data.timestamp}</p>
+    </div>
+  `;
+};
 
 app.get('/api/analysis', async (req, res) => {
   try {
-    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true');
-    const data = await response.json();
-
-    const currentPrice = data.solana.usd;
-    const percentChange = data.solana.usd_24h_change.toFixed(2) + '%';
-
-    const bias = currentPrice > 160 ? 'Bearish' : 'Bullish';
-    const setup = bias === 'Bearish' ? 'Pullback short' : 'Breakout long';
-    const entry = bias === 'Bearish' ? (currentPrice - 0.5).toFixed(2) : (currentPrice + 0.5).toFixed(2);
-    const trigger = bias === 'Bearish' ? (currentPrice - 0.25).toFixed(2) : (currentPrice + 0.25).toFixed(2);
-    const stop = bias === 'Bearish' ? (currentPrice + 1.2).toFixed(2) : (currentPrice - 1.2).toFixed(2);
-    const target = bias === 'Bearish' ? (currentPrice - 3).toFixed(2) : (currentPrice + 3).toFixed(2);
-    const suggestedLeverage = bias === 'Bearish' ? '3–5x short' : '3–5x long';
-    const timestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-
-    const explanation = `This technical analysis presents a ${bias.toLowerCase()} outlook for Solana (SOL) with a ${setup.toLowerCase()} setup. The entry point for this trade is at $${entry}, which is ${
-      bias === 'Bearish' ? 'slightly below' : 'slightly above'
-    } its current trading price of $${currentPrice}. The trigger point is set at $${trigger}, which is the price level that, if reached, would activate the ${bias.toLowerCase()} position.
-
-The stop is set at $${stop}, ${
-      bias === 'Bearish' ? 'above' : 'below'
-    } the current trading price, to limit potential losses if the price unexpectedly ${
-      bias === 'Bearish' ? 'rises' : 'drops'
-    }. The target of this setup is $${target}, meaning the anticipated price that SOL will ${
-      bias === 'Bearish' ? 'drop to' : 'rise to'
-    }.
-
-The suggested leverage for this trade is ${suggestedLeverage}, suggesting a high degree of confidence in the predicted price ${
-      bias === 'Bearish' ? 'drop' : 'rise'
-    }. However, as with all leveraged trades, there is a higher risk associated with this setup, and traders should ensure they are comfortable with the potential losses before proceeding.
-
-Overall, this setup suggests that SOL’s price will continue to ${
-      bias === 'Bearish' ? 'fall' : 'rise'
-    } in the short term, presenting an opportunity for traders to profit from a ${bias.toLowerCase()} position. However, the ${bias.toLowerCase()} bias is based on the current market conditions and could change quickly if new information comes to light. Therefore, use caution.`;
-
-    res.json({
-      timestamp,
-      bias,
-      setup,
-      currentPrice: `$${currentPrice}`,
-      percentChange,
-      entry: `$${entry}`,
-      trigger: `$${trigger}`,
-      stop: `$${stop}`,
-      target: `$${target}`,
-      suggestedLeverage,
-      explanation,
-    });
-  } catch (error) {
-    console.error('Error generating analysis:', error);
-    res.status(500).json({ error: 'Analysis generation failed', details: error.message });
+    const html = await generateAnalysisHTML();
+    res.send(html);
+  } catch (err) {
+    res.status(500).json({ error: 'Analysis generation failed', details: err.message });
   }
 });
 
