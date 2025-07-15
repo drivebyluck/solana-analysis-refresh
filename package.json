@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Solana Analysis with CoinGlass and GPT",
   "main": "server.js",
-  "type": "module",
   "scripts": {
     "start": "node server.js"
   },
