@@ -1,9 +1,10 @@
-const express = require('express');
-const axios = require('axios');
-const cors = require('cors');
-const { OpenAIApi, Configuration } = require('openai');
+import express from 'express';
+import axios from 'axios';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { Configuration, OpenAIApi } from 'openai';
 
-require('dotenv').config();
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
