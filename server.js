@@ -14,7 +14,7 @@ app.get("/", (req, res) => {
   res.send("Solana Technical Analysis API");
 });
 
-app.get("/analysis", async (req, res) => {
+app.get("/api/analysis", async (req, res) => {
   try {
     // Fetch SOL price and 24h change from CoinGecko
     const cgResp = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true");
