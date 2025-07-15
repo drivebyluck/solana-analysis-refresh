@@ -1,8 +1,7 @@
 const express = require("express");
 const axios = require("axios");
-const { OpenAIApi, Configuration } = require("openai");
+const OpenAI = require("openai");
 const cors = require("cors");
-
 require("dotenv").config();
 
 const app = express();
@@ -10,11 +9,9 @@ const port = process.env.PORT || 10000;
 
 app.use(cors());
 
-const configuration = new Configuration({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-
-const openai = new OpenAIApi(configuration);
 
 app.get("/", (req, res) => {
   res.send("Solana Analysis API is live.");
@@ -26,7 +23,7 @@ app.get("/api/solana", async (req, res) => {
 You are a Solana market analyst. Generate a detailed technical analysis for the current day based on typical market patterns, price action, and common trading setups. Include a clearly formatted trading setup table first (with Bias, Setup, Entry, Trigger, Stop, Target, Leverage). Then write a full explanation of the current Solana market conditions and a prediction of the most likely scenario (long or short), including price zones to watch. Finally, provide a backup scenario with the opposite bias and justification for it. Make it sound like it's coming from a seasoned trader who explains why the trade makes sense. Use natural language and keep it concise but useful.
 `;
 
-    const response = await openai.createChatCompletion({
+    const response = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
         {
@@ -40,7 +37,7 @@ You are a Solana market analyst. Generate a detailed technical analysis for the 
       ],
     });
 
-    const analysis = response.data.choices[0].message.content;
+    const analysis = response.choices[0].message.content;
 
     const html = `
       <!DOCTYPE html>
