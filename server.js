@@ -68,6 +68,8 @@ app.get("/api/analysis", async (req, res) => {
     });
 
     const html = completion.data.choices[0].message.content;
+    const cleanedHtml = html.replace(/Timestamp:\s*{[^}]+}/i, "").replace(/Timestamp:\s*.*?<\/?[^>]*>/i, "");
+
 
     const finalHtml = `
       <!DOCTYPE html>
@@ -105,7 +107,7 @@ app.get("/api/analysis", async (req, res) => {
       <body>
         <div class="analysis-box">
           <div id="timestamp">Updated: ${timestamp}</div>
-          ${html}
+          ${cleanedHtml}
         </div>
       </body>
       </html>
