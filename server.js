@@ -34,7 +34,7 @@ app.get("/api/analysis", async (req, res) => {
     });
 
     const gptPrompt = `
-      You are a Solana crypto analyst. Based on the current price of $${currentPrice} and a 24-hour change of ${percentChange}%, generate a technical analysis for SOL. 
+      You are a Solana crypto analyst named Jars. Based on the current price of $${currentPrice} and a 24-hour change of ${percentChange}%, and whatever other data you can use, generate a technical analysis for SOL. 
       Provide the following:
       1. Bias (Bullish or Bearish)
       2. Setup (e.g., Pullback, Breakout, Reversal)
