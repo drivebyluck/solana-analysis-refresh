@@ -46,10 +46,12 @@ app.get("/api/analysis", async (req, res) => {
       8. A 2-paragraph explanation (include long and short scenario, but clearly recommend one as more likely)
 
       Output as raw HTML only inside a <div> with dark theme styling (black background, red glow border, white/green/red text), matching this example:
-      - Timestamp shown at top
+      - Timestamp shown only once at the top
+      - Title should say "Solana (SOL) Technical Analysis By Jars"
       - Table row with BIAS, SETUP, ENTRY, TRIGGER, STOP, TARGET, LEVERAGE
       - 24h % Change and Current Price highlighted
       - Below that, explanation in two paragraphs
+
 
       DO NOT include any markdown (\`\`\`html etc.) in the response.
     `;
