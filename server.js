@@ -1,102 +1,72 @@
 const express = require("express");
+const axios = require("axios");
 const cors = require("cors");
 const { Configuration, OpenAIApi } = require("openai");
-const axios = require("axios");
-require("dotenv").config();
+const fs = require("fs");
+const cron = require("node-cron");
 
 const app = express();
 app.use(cors());
-const port = process.env.PORT || 10000;
 
-const openai = new OpenAIApi(
-  new Configuration({
-    apiKey: process.env.OPENAI_API_KEY,
-  })
-);
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
 
-app.get("/api/analysis", async (req, res) => {
+let cachedHtml = null;
+const cacheFilePath = "analysis_cache.html";
+
+// Load cache from disk if it exists
+if (fs.existsSync(cacheFilePath)) {
+  cachedHtml = fs.readFileSync(cacheFilePath, "utf8");
+}
+
+// Regenerate GPT analysis
+async function regenerateAnalysis() {
   try {
     const cgResponse = await axios.get(
       "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true"
     );
 
     const solanaData = cgResponse.data.solana;
-    if (!solanaData || solanaData.usd === undefined || solanaData.usd_24h_change === undefined) {
-      return res.status(500).json({ error: "Analysis generation failed", details: "Missing price data from API" });
-    }
+    if (!solanaData || solanaData.usd === undefined || solanaData.usd_24h_change === undefined) return;
 
     const currentPrice = solanaData.usd.toFixed(2);
     const percentChange = solanaData.usd_24h_change.toFixed(2);
-
-    const timestamp = new Date().toLocaleString("en-US", {
-      timeZone: "America/New_York",
-      hour12: true,
-    });
+    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York", hour12: true });
 
     const gptPrompt = `
-      You are a Solana crypto analyst named Jars. Based on the current price of $${currentPrice} and a 24-hour change of ${percentChange}%, and whatever other data you can use, generate a technical analysis for SOL. 
-      Provide the following:
-      1. Bias (Bullish or Bearish)
-      2. Setup (e.g., Pullback, Breakout, Reversal)
-      3. Entry price
-      4. Trigger price
-      5. Stop loss
-      6. Target price
-      7. Suggested leverage (MUST be 5x or higher)
-      8. A 2-paragraph explanation (include long and short scenario, but clearly recommend one as more likely)
+Using the current Solana price of $${currentPrice} and a 24h change of ${percentChange}%, generate a professional crypto technical analysis for today. Fill in this table and write a full analysis with both long and short setups. Timestamp should be shown.
 
-      Output as raw HTML only inside a <div> with dark theme styling (black background, red glow border, white/green/red text), matching this example:
-      - Timestamp shown only once at the top
-      - Title should say "Solana (SOL) Technical Analysis By Jars"
-      - Table row with BIAS, SETUP, ENTRY, TRIGGER, STOP, TARGET, LEVERAGE
-      - 24h % Change and Current Price highlighted
-      - Below that, explanation in two paragraphs
+Bias: (Bullish or Bearish)
+Setup: (Descending wedge, breakout retest, etc)
+Entry: (Price level)
+Trigger: (Confirmation signal)
+Stop: (Where to place stop loss)
+Target: (Profit target)
+Leverage: (Recommended leverage)
 
-
-      DO NOT include any markdown (\`\`\`html etc.) in the response.
-    `;
+Respond only in HTML. Use white text on black background, red for bearish, green for bullish. Add “Updated: [timestamp]” at the top. Do not show any disclaimers.
+`;
 
     const completion = await openai.createChatCompletion({
       model: "gpt-4",
-      messages: [
-        {
-          role: "user",
-          content: gptPrompt,
-        },
-      ],
+      messages: [{ role: "user", content: gptPrompt }],
       temperature: 0.7,
     });
 
     const html = completion.data.choices[0].message.content;
-    const cleanedHtml = html.replace(/Timestamp:\s*{[^}]+}/i, "").replace(/Timestamp:\s*.*?<\/?[^>]*>/i, "");
 
-
-    const finalHtml = `
+    cachedHtml = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <style>
-          body {
-            background-color: black;
-            color: white;
-            margin: 0;
-            padding: 0;
-            font-family: Arial, sans-serif;
-          }
-          .analysis-box {
-            border: 2px solid red;
-            box-shadow: 0 0 15px red;
-            padding: 20px;
-            margin: 20px;
-            background-color: #000;
-          }
-          #timestamp {
-            color: white;
-            font-size: 0.9em;
-            margin-bottom: 10px;
-          }
+          body { background-color: black; color: white; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+          .analysis-box { border: 2px solid red; box-shadow: 0 0 15px red; padding: 20px; margin: 20px; background-color: #000; }
+          #timestamp { color: white; font-size: 0.9em; margin-bottom: 10px; }
         </style>
         <script>
           window.onload = function () {
@@ -107,22 +77,38 @@ app.get("/api/analysis", async (req, res) => {
       <body>
         <div class="analysis-box">
           <div id="timestamp">Updated: ${timestamp}</div>
-          ${cleanedHtml}
+          ${html}
         </div>
       </body>
       </html>
     `;
 
-    res.send(finalHtml);
+    fs.writeFileSync(cacheFilePath, cachedHtml, "utf8");
+    console.log("✅ GPT analysis updated:", timestamp);
   } catch (error) {
-    console.error("Error generating analysis:", error);
-    res.status(500).json({
-      error: "Analysis generation failed",
-      details: error.message,
-    });
+    console.error("❌ Error during GPT update:", error);
+  }
+}
+
+// Scheduled runs (12am, 8:30am, 12pm, 5:30pm EST)
+cron.schedule("0 0 * * *", regenerateAnalysis);     // 12:00 AM
+cron.schedule("30 8 * * *", regenerateAnalysis);    // 8:30 AM
+cron.schedule("0 12 * * *", regenerateAnalysis);    // 12:00 PM
+cron.schedule("30 17 * * *", regenerateAnalysis);   // 5:30 PM
+
+// Run once on server start
+regenerateAnalysis();
+
+// Serve cached output
+app.get("/api/analysis", (req, res) => {
+  if (cachedHtml) {
+    res.send(cachedHtml);
+  } else {
+    res.status(503).send("Analysis not ready yet. Please try again shortly.");
   }
 });
 
+const port = process.env.PORT || 10000;
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
