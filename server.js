@@ -66,7 +66,8 @@ async function generateAndCacheAnalysis() {
     });
 
     const html = completion.data.choices[0].message.content;
-    const cleanedHtml = html.replace(/Timestamp:\s*{[^}]+}/i, "").replace(/Timestamp:\s*.*?<\/?[^>]*>/i, "");
+    const cleanedHtml = html.replace(/{{\s*TIMESTAMP\s*}}/gi, '').replace(/Timestamp:\s*\{[^}]+\}/gi, '').replace(/Timestamp:\s*{{[^}]+}}/gi, '').replace(/Timestamp:\s*\S+/gi, '');
+
 
     cachedHtml = `
       <!DOCTYPE html>
