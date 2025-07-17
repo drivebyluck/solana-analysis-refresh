@@ -1,18 +1,22 @@
 const express = require("express");
-const axios = require("axios");
-const fs = require("fs");
+const cors = require("cors");
 const { Configuration, OpenAIApi } = require("openai");
-const path = require("path");
+const axios = require("axios");
 require("dotenv").config();
 
 const app = express();
-const port = 10000;
+app.use(cors());
+const port = process.env.PORT || 10000;
 
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-const openai = new OpenAIApi(configuration);
+const openai = new OpenAIApi(
+  new Configuration({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+);
 
+let cachedHtml = "<!DOCTYPE html><html><body style='background:black; color:white; font-family:Arial;'><div class='analysis-box' style='border:2px solid red; box-shadow:0 0 15px red; padding:20px; margin:20px;'>Analysis not generated yet. Please check back after the next update.</div></body></html>";
+
+// Generates and stores new analysis in memory
 async function generateAndCacheAnalysis() {
   try {
     const cgResponse = await axios.get(
@@ -21,12 +25,13 @@ async function generateAndCacheAnalysis() {
 
     const solanaData = cgResponse.data.solana;
     if (!solanaData || solanaData.usd === undefined || solanaData.usd_24h_change === undefined) {
-      console.error("Missing price data");
+      console.error("Missing data from API");
       return;
     }
 
     const currentPrice = solanaData.usd.toFixed(2);
     const percentChange = solanaData.usd_24h_change.toFixed(2);
+
     const timestamp = new Date().toLocaleString("en-US", {
       timeZone: "America/New_York",
       hour12: true,
@@ -44,14 +49,14 @@ async function generateAndCacheAnalysis() {
       7. Suggested leverage (MUST be 5x or higher)
       8. A 2-paragraph explanation (include long and short scenario, but clearly recommend one as more likely)
 
-      Output as raw HTML only inside a <div> with dark theme styling (black background, red glow border, white/green/red text).
-      - Timestamp shown once at the top
+      Output as raw HTML only inside a <div> with dark theme styling (black background, red glow border, white/green/red text), matching this example:
+      - Timestamp shown only once at the top
       - Title should say "Solana (SOL) Technical Analysis By Jars"
-      - Table with BIAS, SETUP, ENTRY, TRIGGER, STOP, TARGET, LEVERAGE
+      - Table row with BIAS, SETUP, ENTRY, TRIGGER, STOP, TARGET, LEVERAGE
       - 24h % Change and Current Price highlighted
       - Below that, explanation in two paragraphs
 
-      DO NOT include any markdown.
+      DO NOT include any markdown (\`\`\`html etc.) in the response.
     `;
 
     const completion = await openai.createChatCompletion({
@@ -61,23 +66,40 @@ async function generateAndCacheAnalysis() {
     });
 
     const html = completion.data.choices[0].message.content;
+    const cleanedHtml = html.replace(/Timestamp:\s*{[^}]+}/i, "").replace(/Timestamp:\s*.*?<\/?[^>]*>/i, "");
 
-    const cleanedHtml = html
-      .replace(/Timestamp:\s*{[^}]+}/i, "")
-      .replace(/Timestamp:\s*.*?<\/?[^>]*>/i, "");
-
-    const finalHtml = `
+    cachedHtml = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <style>
-          body { background-color: black; color: white; margin: 0; padding: 0; font-family: Arial, sans-serif; }
-          .analysis-box { border: 2px solid red; box-shadow: 0 0 15px red; padding: 20px; margin: 20px; background-color: #000; }
-          #timestamp { color: white; font-size: 0.9em; margin-bottom: 10px; }
+          body {
+            background-color: black;
+            color: white;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+          }
+          .analysis-box {
+            border: 2px solid red;
+            box-shadow: 0 0 15px red;
+            padding: 20px;
+            margin: 20px;
+            background-color: #000;
+          }
+          #timestamp {
+            color: white;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+          }
         </style>
-        <script> window.onload = function () { parent.postMessage({ height: document.body.scrollHeight }, "*"); }; </script>
+        <script>
+          window.onload = function () {
+            parent.postMessage({ height: document.body.scrollHeight }, "*");
+          };
+        </script>
       </head>
       <body>
         <div class="analysis-box">
@@ -87,26 +109,20 @@ async function generateAndCacheAnalysis() {
       </body>
       </html>
     `;
-
-    fs.writeFileSync("cached_analysis.html", finalHtml);
-    console.log(`[${timestamp}] GPT analysis cached to file.`);
   } catch (error) {
-    console.error("Error generating analysis:", error.message);
+    console.error("Error generating analysis:", error);
   }
 }
 
-// Only run generation if triggered by cron (Render starts this file directly)
-if (require.main === module) {
-  generateAndCacheAnalysis();
-}
-
+// === PUBLIC ROUTE ===
 app.get("/api/analysis", (req, res) => {
-  try {
-    const finalHtml = fs.readFileSync("cached_analysis.html", "utf-8");
-    res.send(finalHtml);
-  } catch (err) {
-    res.status(500).send("Error: Cached file not found.");
-  }
+  res.send(cachedHtml);
+});
+
+// === PRIVATE TRIGGER FOR CRON ===
+app.get("/internal/generate", async (req, res) => {
+  await generateAndCacheAnalysis();
+  res.send("Analysis updated");
 });
 
 app.listen(port, () => {
