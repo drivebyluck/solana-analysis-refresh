@@ -1,53 +1,58 @@
 const express = require("express");
 const axios = require("axios");
-const cors = require("cors");
-const { Configuration, OpenAIApi } = require("openai");
 const fs = require("fs");
-const cron = require("node-cron");
+const { Configuration, OpenAIApi } = require("openai");
+const path = require("path");
+require("dotenv").config();
 
 const app = express();
-app.use(cors());
+const port = 10000;
 
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
 });
 const openai = new OpenAIApi(configuration);
 
-let cachedHtml = null;
-const cacheFilePath = "analysis_cache.html";
-
-// Load cache from disk if it exists
-if (fs.existsSync(cacheFilePath)) {
-  cachedHtml = fs.readFileSync(cacheFilePath, "utf8");
-}
-
-// Regenerate GPT analysis
-async function regenerateAnalysis() {
+async function generateAndCacheAnalysis() {
   try {
     const cgResponse = await axios.get(
       "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true"
     );
 
     const solanaData = cgResponse.data.solana;
-    if (!solanaData || solanaData.usd === undefined || solanaData.usd_24h_change === undefined) return;
+    if (!solanaData || solanaData.usd === undefined || solanaData.usd_24h_change === undefined) {
+      console.error("Missing price data");
+      return;
+    }
 
     const currentPrice = solanaData.usd.toFixed(2);
     const percentChange = solanaData.usd_24h_change.toFixed(2);
-    const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York", hour12: true });
+    const timestamp = new Date().toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      hour12: true,
+    });
 
     const gptPrompt = `
-Using the current Solana price of $${currentPrice} and a 24h change of ${percentChange}%, generate a professional crypto technical analysis for today. Fill in this table and write a full analysis with both long and short setups. Timestamp should be shown.
+      You are a Solana crypto analyst named Jars. Based on the current price of $${currentPrice} and a 24-hour change of ${percentChange}%, and whatever other data you can use, generate a technical analysis for SOL. 
+      Provide the following:
+      1. Bias (Bullish or Bearish)
+      2. Setup (e.g., Pullback, Breakout, Reversal)
+      3. Entry price
+      4. Trigger price
+      5. Stop loss
+      6. Target price
+      7. Suggested leverage (MUST be 5x or higher)
+      8. A 2-paragraph explanation (include long and short scenario, but clearly recommend one as more likely)
 
-Bias: (Bullish or Bearish)
-Setup: (Descending wedge, breakout retest, etc)
-Entry: (Price level)
-Trigger: (Confirmation signal)
-Stop: (Where to place stop loss)
-Target: (Profit target)
-Leverage: (Recommended leverage)
+      Output as raw HTML only inside a <div> with dark theme styling (black background, red glow border, white/green/red text).
+      - Timestamp shown once at the top
+      - Title should say "Solana (SOL) Technical Analysis By Jars"
+      - Table with BIAS, SETUP, ENTRY, TRIGGER, STOP, TARGET, LEVERAGE
+      - 24h % Change and Current Price highlighted
+      - Below that, explanation in two paragraphs
 
-Respond only in HTML. Use white text on black background, red for bearish, green for bullish. Add “Updated: [timestamp]” at the top. Do not show any disclaimers.
-`;
+      DO NOT include any markdown.
+    `;
 
     const completion = await openai.createChatCompletion({
       model: "gpt-4",
@@ -57,7 +62,11 @@ Respond only in HTML. Use white text on black background, red for bearish, green
 
     const html = completion.data.choices[0].message.content;
 
-    cachedHtml = `
+    const cleanedHtml = html
+      .replace(/Timestamp:\s*{[^}]+}/i, "")
+      .replace(/Timestamp:\s*.*?<\/?[^>]*>/i, "");
+
+    const finalHtml = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -68,47 +77,38 @@ Respond only in HTML. Use white text on black background, red for bearish, green
           .analysis-box { border: 2px solid red; box-shadow: 0 0 15px red; padding: 20px; margin: 20px; background-color: #000; }
           #timestamp { color: white; font-size: 0.9em; margin-bottom: 10px; }
         </style>
-        <script>
-          window.onload = function () {
-            parent.postMessage({ height: document.body.scrollHeight }, "*");
-          };
-        </script>
+        <script> window.onload = function () { parent.postMessage({ height: document.body.scrollHeight }, "*"); }; </script>
       </head>
       <body>
         <div class="analysis-box">
           <div id="timestamp">Updated: ${timestamp}</div>
-          ${html}
+          ${cleanedHtml}
         </div>
       </body>
       </html>
     `;
 
-    fs.writeFileSync(cacheFilePath, cachedHtml, "utf8");
-    console.log("✅ GPT analysis updated:", timestamp);
+    fs.writeFileSync("cached_analysis.html", finalHtml);
+    console.log(`[${timestamp}] GPT analysis cached to file.`);
   } catch (error) {
-    console.error("❌ Error during GPT update:", error);
+    console.error("Error generating analysis:", error.message);
   }
 }
 
-// Scheduled runs (12am, 8:30am, 12pm, 5:30pm EST)
-cron.schedule("0 0 * * *", regenerateAnalysis);     // 12:00 AM
-cron.schedule("30 8 * * *", regenerateAnalysis);    // 8:30 AM
-cron.schedule("0 12 * * *", regenerateAnalysis);    // 12:00 PM
-cron.schedule("30 17 * * *", regenerateAnalysis);   // 5:30 PM
+// Only run generation if triggered by cron (Render starts this file directly)
+if (require.main === module) {
+  generateAndCacheAnalysis();
+}
 
-// Run once on server start
-regenerateAnalysis();
-
-// Serve cached output
 app.get("/api/analysis", (req, res) => {
-  if (cachedHtml) {
-    res.send(cachedHtml);
-  } else {
-    res.status(503).send("Analysis not ready yet. Please try again shortly.");
+  try {
+    const finalHtml = fs.readFileSync("cached_analysis.html", "utf-8");
+    res.send(finalHtml);
+  } catch (err) {
+    res.status(500).send("Error: Cached file not found.");
   }
 });
 
-const port = process.env.PORT || 10000;
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
